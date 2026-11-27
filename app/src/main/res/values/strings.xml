@@ -1,3 +1,4 @@
 <resources>
-    <string name="service_desc">Lets Device Agent read the screen and tap, type and scroll for you when you give it a command.</string>
+    <string name="wp_desc">Wallpaper that moves with the music you play</string>
+    <string name="wp_name">Music Wallpaper</string>
 </resources>

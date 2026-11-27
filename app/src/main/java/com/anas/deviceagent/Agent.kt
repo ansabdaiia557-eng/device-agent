@@ -33,7 +33,7 @@ object Agent {
     }
 
     private const val SYSTEM = """You control an Android phone for the user. Reply with ONE JSON object only:
-{"thought": "short", "action": "shell|done|fail", "command": "...", "message": "..."}
+{"thought": "short", "action": "shell|script|done|fail", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
 PREFER "shell": it runs invisibly in the background as the Android shell user (screen does not move). Put one command in "command" (no pipes, no redirects, no && or ;). Examples:
 - airplane mode: cmd connectivity airplane-mode enable|disable
 - Wi-Fi: svc wifi enable|disable   (if that fails: cmd wifi set-wifi-enabled enabled|disabled)
@@ -53,7 +53,11 @@ If a shell command fails or is blocked, try the fallback or another shell varian
 Only a few services are allowed; blocked commands return an error, then try another way.
 There is NO screen control: you cannot tap, type, scroll or open the UI. If the goal has no shell route, answer fail and say it cannot be done in the background.
 More: lock screen: input keyevent 223 (sleep) ; wake: input keyevent 224 ; open an app: am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p <package> (this shows the app on screen) ; read notifications: dumpsys notification --noredact (long, only if asked).
-Actions: shell ("command"), done ("message" = short result for the user), fail ("message" = why).
+Files (only inside /sdcard, no .. or wildcards): ls -l /sdcard/Download ; cat /sdcard/x.txt ; stat ; du -s ; head/tail -n 20 ; cp ; mv ; mkdir -p ; touch ; rm -r /sdcard/dir/sub (asks the user to confirm).
+Packages: pm list packages -3 ; pm path <pkg> ; pm install -r /sdcard/x.apk, pm uninstall <pkg>, pm grant|revoke <pkg> <perm> (these ask the user to confirm first; say what you are doing).
+Health: dumpsys battery ; dumpsys meminfo ; dumpsys cpuinfo ; cat /proc/meminfo ; ps -A ; top -b -n 1 ; df ; uptime ; getprop ro.build.version.release. Summarise results nicely in "message" (short, user's language).
+Several commands in one task: action "script" with "commands": [up to 8 commands, run in order, stops on first error/block].
+Actions: shell ("command"), script ("commands"), done ("message" = short result for the user), fail ("message" = why).
 Rules: Never enter passwords or payment details, never send money or messages unless the goal says so. Answer "message" in the user's language. Be efficient, few steps."""
 
     fun start(ctx: Context, goal: String) {
@@ -117,12 +121,26 @@ Rules: Never enter passwords or payment details, never send money or messages un
         }
     }
 
-    private fun shell(cmd: String): String {
+    @Volatile var confirmer: ((String) -> Boolean)? = null
+
+    /** Runs one command through the policy. Used by the agent and by the terminal screen. */
+    fun runShell(cmd: String, maxChars: Int = 1200): String {
         val tokens = ShellPolicy.tokenize(cmd)
-        ShellPolicy.check(tokens)?.let { return "blocked: $it" }
-        if (!Sh.granted()) return "error: Shizuku stopped or not authorized"
-        return try { Sh.exec(tokens) } catch (e: Throwable) { "error: ${e.message}" }
+        when (val v = ShellPolicy.check(tokens)) {
+            is ShellPolicy.V.No -> return "blocked: ${v.why}"
+            is ShellPolicy.V.Confirm -> {
+                val c = confirmer
+                if (c == null || !c(v.why + "\n\n" + cmd)) return "denied: the user did not confirm"
+            }
+            else -> {}
+        }
+        if (!Sh.binderReady()) return "error: Shizuku is not running"
+        if (!Sh.granted()) return "error: Shizuku not authorized"
+        val slow = tokens[0] == "pm" && tokens.getOrNull(1) == "install"
+        return try { Sh.exec(tokens, if (slow) 120 else 15, maxChars) } catch (e: Throwable) { "error: ${e.message}" }
     }
+
+    private fun shell(cmd: String): String = runShell(cmd)
 
     private fun loop(goal: String) {
         val history = ArrayList<String>()
@@ -143,11 +161,28 @@ Rules: Never enter passwords or payment details, never send money or messages un
             if (stop) { say("⏹ اتوقف"); return }
             if (action == "done") { say("✅ " + j.optString("message", "تم")); return }
             if (action == "fail") { say("🛑 " + j.optString("message", "مقدرتش")); return }
-            if (action != "shell") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
-            val result = shell(j.optString("command"))
-            val desc = "shell `${j.optString("command")}`"
+            if (action != "shell" && action != "script") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
+            val result: String
+            val desc: String
+            if (action == "script") {
+                val arr = j.optJSONArray("commands")
+                val sb = StringBuilder()
+                var n = 0
+                if (arr != null) while (n < arr.length() && n < 8) {
+                    if (stop) break
+                    val c = arr.optString(n); n++
+                    val r = runShell(c, 600)
+                    sb.append("[$n] $c → ${r.take(400)}\n")
+                    if (r.startsWith("blocked") || r.startsWith("denied") || r.startsWith("error")) break
+                }
+                result = sb.toString().trim().ifEmpty { "no commands" }
+                desc = "script (${n} commands)"
+            } else {
+                result = shell(j.optString("command"))
+                desc = "shell `${j.optString("command")}`"
+            }
             say("$step. $desc → ${result.take(160)}" + (if (thought.isNotBlank()) "\n   $thought" else ""))
-            history.add("$step. $desc → ${result.take(300)}")
+            history.add("$step. $desc → ${result.take(700)}")
             Thread.sleep(300)
         }
         say("⏱ وصلت للحد الأقصى ($MAX_STEPS خطوة) ووقفت")
