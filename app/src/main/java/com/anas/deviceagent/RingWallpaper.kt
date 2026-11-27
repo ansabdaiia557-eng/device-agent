@@ -551,7 +551,7 @@ class RingWallpaper : WallpaperService() {
                 bass = 0f; mid = 0f; high = 0f
                 if (now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@RingWallpaper) }
                 render(false, false, now)
-                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 33L else 1000L) else 100L)
+                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 16L else 1000L) else 33L)
                 return
             }
             startViz()
@@ -560,7 +560,8 @@ class RingWallpaper : WallpaperService() {
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else "simple"
             render(true, vizLive, now)
-            h.postDelayed(tick, 33)
+            val target = if (NotifState.locked(this@RingWallpaper)) 16L else 22L
+            h.postDelayed(tick, Math.max(1L, target - (System.currentTimeMillis() - now)))
         }
 
         private var ovBmp: Bitmap? = null
