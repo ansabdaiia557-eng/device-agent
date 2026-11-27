@@ -67,6 +67,26 @@ Rules: use only indexes from the current screen. If the screen is not what you e
         t.start()
     }
 
+    private fun generateWithRetry(key: String, model: String, prompt: String): String {
+        var attempt = 0
+        while (true) {
+            try {
+                return Gemini.generate(key, model, SYSTEM, prompt)
+            } catch (e: Exception) {
+                if (stop) throw e
+                val m = e.message ?: ""
+                val temp = m.contains("HTTP 503") || m.contains("HTTP 429") || m.contains("HTTP 500") ||
+                    e is java.net.SocketTimeoutException || e is java.net.UnknownHostException ||
+                    e is java.net.ConnectException || m.contains("timeout", true)
+                attempt++
+                if (!temp || attempt > 5) throw e
+                val wait = 2L shl (attempt - 1)
+                say("🔁 جوجل مشغول شوية، هحاول تاني بعد ${wait} ث ($attempt/5)")
+                Thread.sleep(wait * 1000)
+            }
+        }
+    }
+
     private fun loop(goal: String, key: String, model: String) {
         val history = ArrayList<String>()
         var bad = 0
@@ -78,7 +98,7 @@ Rules: use only indexes from the current screen. If the screen is not what you e
             val prompt = "GOAL: $goal\n\nSTEPS SO FAR:\n" +
                 (if (history.isEmpty()) "(none)" else history.joinToString("\n")) +
                 "\n\nCURRENT SCREEN:\n$screen"
-            val raw = Gemini.generate(key, model, SYSTEM, prompt)
+            val raw = generateWithRetry(key, model, prompt)
             val j = try { JSONObject(raw.trim().removePrefix("```json").removeSuffix("```").trim()) }
             catch (e: Exception) {
                 bad++
