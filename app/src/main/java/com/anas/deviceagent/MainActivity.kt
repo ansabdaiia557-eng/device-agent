@@ -243,6 +243,16 @@ class MainActivity : Activity() {
                 addView(sceneBtn("مشهد: الأكواد", "code"), LinearLayout.LayoutParams(0, -2, 1f))
             })
             addView(android.widget.CheckBox(this@MainActivity).apply {
+                text = "خلفية سودا لما مفيش حاجة شغالة"
+                isChecked = prefs.getBoolean("wp_black_idle", true)
+                setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_black_idle", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
+            })
+            addView(android.widget.CheckBox(this@MainActivity).apply {
+                text = "زرّين الأغنية اللي بعدها واللي قبلها (مشهد الأكواد)"
+                isChecked = prefs.getBoolean("wp_skip", true)
+                setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_skip", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
+            })
+            addView(android.widget.CheckBox(this@MainActivity).apply {
                 text = "حروف العنوان تطير وتتجمع (مشهد الأكواد)"
                 isChecked = prefs.getBoolean("wp_fly", true)
                 setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_fly", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }

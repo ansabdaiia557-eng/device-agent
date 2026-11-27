@@ -29,6 +29,7 @@ class CodeScene {
 
     // flying-letters title mode
     @Volatile var flyMode = true
+    @Volatile var showSkip = true
     private var flyPhase = 0                  // 0 settled, 1 old letters leave, 2 new letters arrive
     private var flyT0 = 0L
     private val sox = FloatArray(400); private val soy = FloatArray(400); private val sang = FloatArray(400)
@@ -374,7 +375,9 @@ class CodeScene {
         val bx = (w - total) / 2; val byy = by + w * 0.09f
         for (i in 0 until 3) {
             val r = btn[i]
-            r.set(bx + i * (bw + gap), byy, bx + i * (bw + gap) + bw, byy + bh)
+            if (!showSkip && i != 1) { r.set(-9999f, -9999f, -9990f, -9990f); continue }
+            val x0 = if (showSkip) bx + i * (bw + gap) else (w - bw) / 2
+            r.set(x0, byy, x0 + bw, byy + bh)
             val fl = if (i == flashIdx) (1f - (now - flashAt) / 450f).coerceIn(0f, 1f) else 0f
             if (fl > 0f) { p.color = Color.argb((fl * 150).toInt(), 60, 255, 140); p.setShadowLayer(18f * fl, 0f, 0f, Color.argb((fl * 255).toInt(), 0, 255, 110)); c.drawRoundRect(r, 8f, 8f, p) }
             p.setShadowLayer(gl, 0f, 0f, Color.argb(200, 0, 255, 110))

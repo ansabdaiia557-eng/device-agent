@@ -149,6 +149,8 @@ class MusicWallpaper : WallpaperService() {
         private fun loadSettings() {
             S = WStyle.load(getSharedPreferences("prefs", Context.MODE_PRIVATE))
             scene = getSharedPreferences("prefs", Context.MODE_PRIVATE).getString("wp_scene", "image") ?: "image"
+            blackIdle = getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean("wp_black_idle", true)
+            codeScene.showSkip = getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean("wp_skip", true)
             codeScene.flyMode = getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean("wp_fly", true)
             if (stars[0] == 0f) { val r = java.util.Random(11); for (i in 0 until 90) { stars[i * 4] = r.nextFloat(); stars[i * 4 + 1] = r.nextFloat() * 0.75f; stars[i * 4 + 2] = r.nextFloat() * 6.28f; stars[i * 4 + 3] = 0.4f + r.nextFloat() } }
             ax = S.ax; ay = S.ay; inten = S.intensity
@@ -172,6 +174,7 @@ class MusicWallpaper : WallpaperService() {
         }
 
         private var lastTap = 0L
+        private var blackIdle = true
         override fun onCreate(sh: SurfaceHolder) {
             super.onCreate(sh)
             setTouchEventsEnabled(true)
@@ -269,7 +272,7 @@ class MusicWallpaper : WallpaperService() {
                 bass = 0f; mid = 0f; high = 0f; rings.clear()
                 if (scene == "code" && now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@MusicWallpaper) }
                 draw(false, false, now)
-                h.postDelayed(tick, if (scene == "code" && (codeScene.busy || codeScene.flashing(now))) 50L else 1000L)
+                h.postDelayed(tick, if (scene == "code" && !blackIdle && (codeScene.busy || codeScene.flashing(now))) 50L else 1000L)
                 return
             }
             startViz()
@@ -324,6 +327,7 @@ class MusicWallpaper : WallpaperService() {
             try {
                 c = holder.lockCanvas() ?: return
                 val w = c.width.toFloat(); val hh = c.height.toFloat()
+                if (!playing && blackIdle) { c.drawColor(Color.BLACK); return }
                 t += 0.033f
                 loadBase(c.width, c.height)
                 val bimg = baseBmp
