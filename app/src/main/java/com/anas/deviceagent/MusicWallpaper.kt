@@ -100,6 +100,9 @@ class MusicWallpaper : WallpaperService() {
         private var shaderW = 0f
         private var bgShader: LinearGradient? = null
         private var moonBump = 0f
+        private var swayAmp = 0.4f
+        private fun sn(x: Float) = Math.sin(x.toDouble()).toFloat()
+        private fun ex(x: Float) = Math.exp(x.toDouble()).toFloat()
         private var fallState = 0       // 0 sit, 1 wobble, 2 fall, 3 lying, 4 rise
         private var fallT0 = 0L
         private var lastFall = 0L
@@ -372,19 +375,64 @@ class MusicWallpaper : WallpaperService() {
             c.drawCircle(mcx + mr * 0.1f, mcy - mr * 0.5f, mr * 0.09f, paint)
             c.drawCircle(mcx - mr * 0.2f, mcy + mr * 0.45f, mr * 0.12f, paint)
 
-            // fall state machine
-            if (playing && beatFlag > 0f && fallState == 0 && now - lastFall > 6000 && bass > 0.5f) { fallState = 1; fallT0 = now }
+            // trigger
+            if (playing && beatFlag > 0f && fallState == 0 && now - lastFall > 7000 && bass > 0.5f) { fallState = 1; fallT0 = now }
             beatFlag = 0f
-            val el = (now - fallT0).toFloat()
-            var ang = 0f; var hop = 0f; var kick = 0f
-            when (fallState) {
-                0 -> { if (playing) { ang = 1.4f * Math.sin((t * 2.2f).toDouble()).toFloat(); kick = 9f * Math.sin((t * 3.1f).toDouble()).toFloat(); hop = 0.5f * punch.coerceIn(0f, 1.5f) } }
-                1 -> { ang = 11f * Math.sin((el / 38f).toDouble()).toFloat() * (el / 320f).coerceAtMost(1f); kick = 25f * Math.sin((el / 30f).toDouble()).toFloat(); if (el > 320f) { fallState = 2; fallT0 = now } }
-                2 -> { val p = Math.min(1f, el / 480f); ang = -108f * p * p * (3f - 2f * p) * (1f + 0.04f * p); kick = 22f * Math.sin((el / 40f).toDouble()).toFloat(); if (el > 480f) { fallState = 3; fallT0 = now; moonBump = 0.03f; punchV += 0.9f } }
-                3 -> { val d = Math.exp((-el / 330f).toDouble()).toFloat(); val bounce = Math.abs(Math.sin((el / 95f).toDouble())).toFloat() * d
-                    ang = -108f + 9f * bounce; hop = 3.2f * bounce; kick = 14f * Math.sin((el / 70f).toDouble()).toFloat() * d
-                    if (el > 1100f) { fallState = 4; fallT0 = now } }
-                4 -> { val p = Math.min(1f, el / 900f); ang = -108f * (1f - backOut(p)); hop = Math.sin(p * Math.PI).toFloat() * 4.5f; kick = 12f * Math.sin((p * 14f).toDouble()).toFloat() * (1f - p); if (el > 900f) { fallState = 0; lastFall = now } }
+            swayAmp += ((if (playing) 0.5f + bass else 0.3f) - swayAmp) * 0.04f
+            val sAng = 1.3f * swayAmp * sn(t * 1.5f)
+            val sKick = 7f * swayAmp * sn(t * 2.0f)
+            val sArm = 12f + 4f * swayAmp * sn(t * 1.7f)
+            val sHop = 0.5f * punch.coerceIn(0f, 1.5f)
+            var ang = sAng; var kick = sKick; var armA = sArm; var thighA = 0f; var hop = sHop; var sq = 0f
+            var dizzy = false
+            if (fallState == 1) {
+                val el = (now - fallT0).toFloat()
+                val total = 5400f
+                var pa = 0f; var pk = 0f; var pr = 0f; var pt = 0f; var ph = 0f; var ps = 0f
+                when {
+                    el < 600f -> {            // 1) anticipation: slow lean back, small wobble, arms start to wave
+                        val p = el / 600f
+                        pa = -9f * ease(p) + 2.5f * p * sn(el / 70f)
+                        pk = 10f * p * sn(el / 60f)
+                        pr = 12f + 35f * p * sn(el / 75f)
+                    }
+                    el < 1900f -> {           // 2+3) tip over with gravity easing, everything flailing
+                        val p = (el - 600f) / 1300f
+                        val g = Math.pow(p.toDouble(), 2.2).toFloat()
+                        pa = -9f - 91f * g
+                        pk = 28f * sn(el / 85f) * (0.4f + 0.6f * p)
+                        pt = 18f * sn(el / 110f + 1f) * p
+                        pr = 12f + 70f * sn(el / 65f) * (0.5f + 0.5f * p)
+                    }
+                    el < 2500f -> {           // 4) impact: bounce + squash
+                        val q = (el - 1900f) / 600f
+                        pa = -100f + 9f * ex(-q * 4.5f) * Math.abs(sn(q * 10f))
+                        ps = 0.09f * ex(-q * 6f)
+                        pk = 14f * sn(q * 20f) * ex(-q * 3f)
+                        pr = 12f + 50f * ex(-q * 3f) * sn(q * 18f)
+                        pt = 8f * sn(q * 16f) * ex(-q * 3f)
+                        dizzy = true
+                        if (el < 1960f) moonBump = 0.03f
+                    }
+                    el < 3600f -> {           // 5) stays down
+                        pa = -100f + 1.2f * sn(el / 300f)
+                        pk = 5f * sn(el / 260f)
+                        pr = 25f + 6f * sn(el / 230f)
+                        dizzy = el < 3200f
+                    }
+                    else -> {                 // 6) slow get-up with a push-off, then sits
+                        val p = (el - 3600f) / 1800f
+                        val e2 = ease(p)
+                        pa = -100f * (1f - e2) + 2.5f * sn(e2 * 3.14159f)
+                        pr = 12f + 55f * sn(Math.min(1f, p / 0.3f) * 3.14159f) * (1f - p)
+                        pk = 10f * sn(p * 12f) * (1f - p)
+                        ph = if (p > 0.75f) 2.5f * sn((p - 0.75f) / 0.25f * 3.14159f) else 0f
+                    }
+                }
+                val wt = Math.min(ease((el / 250f).coerceIn(0f, 1f)), ease(((total - el) / 350f).coerceIn(0f, 1f)))
+                ang = sAng + (pa - sAng) * wt; kick = sKick + (pk - sKick) * wt; armA = sArm + (pr - sArm) * wt
+                thighA = pt * wt; hop = sHop + (ph - sHop) * wt; sq = ps * wt
+                if (el >= total) { fallState = 0; lastFall = now }
             }
             moonBump *= 0.88f
             // person + chair, local unit u, origin = back foot of chair on the moon top
@@ -392,34 +440,42 @@ class MusicWallpaper : WallpaperService() {
             val gx = mcx - 3f * u; val gy = mcy - mr + 0.4f * u
             c.save()
             c.translate(gx, gy - hop * u)
+            c.scale(1f + 0.6f * sq, 1f - sq)
             c.rotate(ang)
             val ink = Color.rgb(6, 6, 12)
             paint.color = ink
             paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND
             paint.strokeWidth = 1.1f * u
-            c.drawLine(0f, 0f, 0f, -8f * u, paint)            // chair back leg
-            c.drawLine(9f * u, 0f, 9f * u, -8f * u, paint)    // chair front leg
-            c.drawLine(0f, -8f * u, 0f, -18f * u, paint)      // backrest
+            c.drawLine(0f, 0f, 0f, -8f * u, paint)
+            c.drawLine(9f * u, 0f, 9f * u, -8f * u, paint)
+            c.drawLine(0f, -8f * u, 0f, -18f * u, paint)
             paint.strokeWidth = 1.4f * u
-            c.drawLine(-0.3f * u, -8f * u, 9.8f * u, -8f * u, paint) // seat
-            paint.strokeWidth = 4.2f * u                       // torso
+            c.drawLine(-0.3f * u, -8f * u, 9.8f * u, -8f * u, paint)
+            // far arm (behind torso)
+            paint.strokeWidth = 1.4f * u
+            c.save(); c.translate(3f * u, -15.5f * u); c.rotate(-armA * 0.8f + 40f)
+            c.drawLine(0f, 0f, 0f, 6f * u, paint); c.restore()
+            paint.strokeWidth = 4.4f * u
             c.drawLine(3f * u, -10.5f * u, 3f * u, -16.5f * u, paint)
-            paint.strokeWidth = 2.2f * u                       // thigh
-            c.drawLine(3f * u, -10f * u, 10.5f * u, -10f * u, paint)
-            c.save()                                            // shin swings from the knee
-            c.translate(10.5f * u, -10f * u); c.rotate(kick)
+            // thigh + shin
+            c.save(); c.translate(3f * u, -10f * u); c.rotate(thighA)
+            paint.strokeWidth = 2.2f * u
+            c.drawLine(0f, 0f, 7.5f * u, 0f, paint)
+            c.translate(7.5f * u, 0f); c.rotate(kick)
             paint.strokeWidth = 1.9f * u
             c.drawLine(0f, 0f, 0f, 7f * u, paint)
             c.restore()
-            paint.strokeWidth = 1.5f * u                       // arm resting on the knee
-            c.drawLine(3f * u, -15f * u, 7f * u, -12.5f * u, paint)
+            // near arm
+            paint.strokeWidth = 1.6f * u
+            c.save(); c.translate(3f * u, -15.5f * u); c.rotate(-armA + 50f)
+            c.drawLine(0f, 0f, 0f, 6.2f * u, paint); c.restore()
             paint.style = Paint.Style.FILL
-            c.drawCircle(3.6f * u, -20.2f * u, 2.5f * u, paint) // head
-            if (fallState == 3) {
+            c.drawCircle(3.6f * u, -20.4f * u, 2.7f * u, paint)
+            if (dizzy) {
                 paint.color = Color.argb(230, 255, 230, 120)
                 for (k in 0 until 3) {
-                    val a = t * 7f + k * 2.09f
-                    c.drawCircle(3.6f * u + Math.cos(a.toDouble()).toFloat() * 4.6f * u, -23.8f * u + Math.sin(a.toDouble()).toFloat() * 1.4f * u, 0.7f * u, paint)
+                    val a = t * 6f + k * 2.09f
+                    c.drawCircle(3.6f * u + Math.cos(a.toDouble()).toFloat() * 4.8f * u, -24.4f * u + Math.sin(a.toDouble()).toFloat() * 1.4f * u, 0.7f * u, paint)
                 }
             }
             c.restore()
