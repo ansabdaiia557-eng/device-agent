@@ -35,14 +35,14 @@ class MainActivity : Activity() {
         }
         val modelEt = EditText(this).apply {
             hint = "Model"
-            setText(prefs.getString("model", "gemini-2.5-flash"))
+            setText((prefs.getString("model", "gemini-3.8-flash") ?: "gemini-3.8-flash").let { if (it == "gemini-2.5-flash") "gemini-3.8-flash" else it })
             setSingleLine()
         }
         val saveBtn = Button(this).apply {
             text = "حفظ"
             setOnClickListener {
                 prefs.edit().putString("key", keyEt.text.toString().trim())
-                    .putString("model", modelEt.text.toString().trim().ifEmpty { "gemini-2.5-flash" }).apply()
+                    .putString("model", modelEt.text.toString().trim().ifEmpty { "gemini-3.8-flash" }).apply()
                 Toast.makeText(this@MainActivity, "تم الحفظ", Toast.LENGTH_SHORT).show()
             }
         }

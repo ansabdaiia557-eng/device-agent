@@ -41,14 +41,19 @@ Rules: use only indexes from the current screen. If the screen is not what you e
         val svc0 = AgentService.instance
         val prefs = ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE)
         val key = prefs.getString("key", "") ?: ""
-        val model = prefs.getString("model", "gemini-2.5-flash") ?: "gemini-2.5-flash"
+        val model = (prefs.getString("model", "gemini-3.8-flash") ?: "gemini-3.8-flash").let { if (it == "gemini-2.5-flash") "gemini-3.8-flash" else it }
         if (key.isBlank()) { say("⚠️ حط مفتاح Gemini الأول من الإعدادات فوق"); return }
         if (svc0 == null) { say("⚠️ فعّل خدمة الوصول (Accessibility) الأول"); return }
         running = true; stop = false
         say("🎯 $goal")
         Thread {
             try { loop(goal, key, model) }
-            catch (e: Exception) { say("❌ ${e.message}") }
+            catch (e: Exception) {
+                val m = e.message ?: ""
+                say(if (m.contains("HTTP 404")) "❌ اسم الموديل غلط أو مش متاح. غيّره من خانة الموديل فوق (جرب gemini-3.8-flash) واضغط حفظ.\n$m"
+                else if (m.contains("HTTP 400") && m.contains("API key")) "❌ مفتاح Gemini غلط. راجعه واضغط حفظ.\n$m"
+                else "❌ $m")
+            }
             finally { running = false; onFinished?.invoke() }
         }.start()
     }
