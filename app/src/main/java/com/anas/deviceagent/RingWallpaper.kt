@@ -524,12 +524,12 @@ class RingWallpaper : WallpaperService() {
                 lastNow = now
                 if (playing) { simT += dt; updateBands(real, now) } else { punch *= 0.9f }
                 rT += dt
-                val loudT = if (playing) (0.5f * mid + 0.4f * bass + 0.3f * high).coerceIn(0f, 1f) else 0f
+                val loudT = if (playing) (0.55f * mid + 0.4f * bass + 0.5f * high).coerceIn(0f, 1f) else 0f
                 rLoud += (loudT - rLoud) * (if (loudT > rLoud) 0.06f else 0.010f) * (dt / 0.033f).coerceAtMost(3f)
-                val sT = 1f + 0.07f * bass + 0.09f * punch.coerceIn(-0.4f, 1f)
+                val sT = 1f + 0.035f * bass + 0.05f * mid + 0.035f * high + 0.07f * punch.coerceIn(-0.4f, 1f)
                 rScale += (sT - rScale) * 0.2f
-                rPulse += (Math.max(0f, punch) * 1.3f - rPulse) * 0.25f
-                rSpin += dt * (0.16f + 0.25f * rLoud)
+                rPulse += (Math.max(0f, punch) * 1.0f + 0.35f * high + 0.25f * mid - rPulse) * 0.25f
+                rSpin += dt * (0.16f + 0.35f * rLoud)
                 // title: melt old, then form new
                 val t = if (playing) MusicState.songTitle.trim() else ""; val a = if (playing) MusicState.songArtist.trim() else ""
                 want = if (t.isEmpty() && a.isEmpty()) "" else if (a.isEmpty()) t else "$t - $a"
@@ -540,7 +540,7 @@ class RingWallpaper : WallpaperService() {
                 val fs = form * form * (3f - 2f * form)
                 val ax = -0.95f + 0.09f * Math.sin(rT * 0.31).toFloat()
                 val ay = 0.5f + 0.30f * Math.sin(rT * 0.19).toFloat()
-                g.draw(ax, ay, rScale, 1f + 3.2f * rLoud, rSpin, rT, rPulse.coerceIn(0f, 1f), fs, (0.35f + 0.9f * rLoud).coerceAtMost(1.2f), fade.coerceIn(0f, 1f))
+                g.draw(ax, ay, rScale, 1f + 3.2f * (0.6f * rLoud + 0.4f * (0.6f * mid + 0.8f * high).coerceIn(0f, 1f)), rSpin, rT, rPulse.coerceIn(0f, 1f), fs, (0.35f + 0.9f * rLoud).coerceAtMost(1.2f), fade.coerceIn(0f, 1f))
             } catch (e: Throwable) {
                 getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("ring_error", "render: " + e.message).apply()
                 failed = true; releaseGl()
