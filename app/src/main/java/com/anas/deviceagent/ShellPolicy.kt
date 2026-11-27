@@ -23,7 +23,7 @@ object ShellPolicy {
         "uninstall", "install", "wipe", "factory", "reboot", "shutdown", "recovery", "accessibility",
         "adb_", "development_settings", "device_provisioned", "user_setup", "password", "lock_pattern",
         "disable-user", "disable-until", "suspend", "shizuku", "deviceagent", "systemui", "rikka", "delete", "format")
-    private val cmdOk = setOf("connectivity", "bluetooth_manager", "media_session", "notification", "uimode", "location", "wifi", "vibrator_manager")
+    private val cmdOk = setOf("connectivity", "bluetooth_manager", "media_session", "notification", "uimode", "location", "wifi", "vibrator_manager", "phone", "statusbar")
     private val amOk = setOf("start", "start-activity", "startservice", "start-service", "broadcast", "force-stop")
     private val pmOk = setOf("list", "path", "resolve-activity")
     private val keysOk = setOf("24", "25", "85", "86", "87", "88", "126", "127", "164")

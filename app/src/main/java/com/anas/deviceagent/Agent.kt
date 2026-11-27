@@ -43,7 +43,7 @@ object Agent {
 PREFER "shell": it runs invisibly in the background as the Android shell user (screen does not move). Put one command in "command" (no pipes, no redirects, no && or ;). Examples:
 - airplane mode: cmd connectivity airplane-mode enable|disable
 - Wi-Fi: svc wifi enable|disable   (if that fails: cmd wifi set-wifi-enabled enabled|disabled)
-- mobile data: svc data enable|disable
+- mobile data: svc data enable|disable   (fallback: cmd phone data enable|disable, or settings put global mobile_data 1|0)
 - Bluetooth: cmd bluetooth_manager enable|disable
 - brightness: settings put system screen_brightness_mode 0 ; then settings put system screen_brightness 0..255 (two steps)
 - volume: cmd media_session volume --stream 3 --set 0..15   (3 music, 2 ring, 4 alarm)
@@ -55,6 +55,7 @@ PREFER "shell": it runs invisibly in the background as the Android shell user (s
 - list user apps: pm list packages -3 ; find an app: pm list packages
 - media keys (play/pause 85, next 87, previous 88): input keyevent 85
 - read state: settings get ... , dumpsys battery, getprop ...
+Toggles (airplane, Wi-Fi, data, Bluetooth, brightness, volume, DND, rotation, dark mode, location, alarms, app list) must NEVER use UI actions. If a shell command fails or is blocked, try the fallback or another shell variant (at least 3 different tries) before giving up with "fail". Never open Settings and tap for these.
 Only a few services are allowed; blocked commands return an error, then try another way.
 Use UI actions only when no shell command can do the job (they run on a hidden screen when possible):
 - open_app ("app": name or package), tap (index), long_press (index), type (index, text), enter (index), scroll (direction, optional index), back, home, wait
@@ -227,6 +228,7 @@ Rules: you get the screen list only after a UI action started the UI. Use only i
             var result = "ok"
             if (action == "done") { say("✅ " + j.optString("message", "تم")); return }
             if (action == "fail") { say("🛑 " + j.optString("message", "مقدرتش")); return }
+            if (action in uiActions && mode == 0) say("👆 الأمر ده محتاج الشاشة: $action")
             if (action in uiActions && !ensureUi()) { history.add("$step. $action → UI unavailable"); continue }
             val s = AgentService.instance
             when (action) {
