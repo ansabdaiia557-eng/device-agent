@@ -263,18 +263,23 @@ class MusicWallpaper : WallpaperService() {
             }
         }
 
+        private var wasPlaying = false; private var idleSince = 0L; private var playSince = 0L
+
         private fun step() {
             if (!visible) return
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val playing = am.isMusicActive
             val now = System.currentTimeMillis()
+            if (playing && !wasPlaying) { playSince = now; idleSince = 0L }
+            if (!playing && wasPlaying) idleSince = now
+            wasPlaying = playing
             if (!playing) {
                 stopViz()
                 MusicState.mode = "idle"
                 bass = 0f; mid = 0f; high = 0f; rings.clear()
                 if (scene == "code" && now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@MusicWallpaper) }
                 draw(false, false, now)
-                h.postDelayed(tick, if (scene == "code" && !blackIdle && (codeScene.busy || codeScene.flashing(now))) 50L else 1000L)
+                h.postDelayed(tick, if (blackIdle && idleSince > 0L && now - idleSince < 1700L) 33L else if (scene == "code" && !blackIdle && (codeScene.busy || codeScene.flashing(now))) 50L else 1000L)
                 return
             }
             startViz()
@@ -326,10 +331,12 @@ class MusicWallpaper : WallpaperService() {
         private fun draw(playing: Boolean, real: Boolean, now: Long) {
             val holder = surfaceHolder
             var c: Canvas? = null
+            var ov = 0f
             try {
                 c = holder.lockCanvas() ?: return
                 val w = c.width.toFloat(); val hh = c.height.toFloat()
-                if (!playing && blackIdle) { c.drawColor(Color.BLACK); return }
+                if (!playing && blackIdle && (idleSince == 0L || now - idleSince >= 1600L)) { c.drawColor(Color.BLACK); return }
+                ov = if (!playing && blackIdle) (now - idleSince) / 1600f else if (playing && playSince > 0L && now - playSince < 1000L) 1f - (now - playSince) / 1000f else 0f
                 t += 0.033f
                 loadBase(c.width, c.height)
                 val bimg = baseBmp
@@ -417,6 +424,7 @@ class MusicWallpaper : WallpaperService() {
                 c.restore()
             } catch (e: Throwable) {
             } finally {
+                try { if (c != null && ov > 0.01f) c.drawColor(Color.argb((ov.coerceIn(0f, 1f) * 255).toInt(), 0, 0, 0)) } catch (e: Throwable) {}
                 try { if (c != null) holder.unlockCanvasAndPost(c) } catch (e: Throwable) {}
             }
         }

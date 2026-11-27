@@ -37,6 +37,7 @@ uniform float uTime;
 uniform float uPulse;
 uniform float uForm;
 uniform float uLiq;
+uniform float uFade;
 uniform vec4 uRect;
 uniform vec2 uTexel;
 uniform sampler2D uTex;
@@ -180,7 +181,7 @@ void main() {
     col += vec3(0.8, 0.84, 0.9) * pr * 2.2;
     col *= (1.0 - 0.35 * r * r);
     col += (hash(fc + fract(uTime)) - 0.5) * 0.008;
-    gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    gl_FragColor = vec4(clamp(col, 0.0, 1.0) * uFade, 1.0);
 }
 
 """
@@ -287,7 +288,7 @@ class GlRing {
         EGL14.eglSwapBuffers(dpy, surf)
     }
 
-    fun draw(ax: Float, ay: Float, scale: Float, wave: Float, spin: Float, time: Float, pulse: Float, form: Float, liq: Float) {
+    fun draw(ax: Float, ay: Float, scale: Float, wave: Float, spin: Float, time: Float, pulse: Float, form: Float, liq: Float, fade: Float) {
         val a = IntArray(1)
         EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_WIDTH, a, 0); w = a[0]
         EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_HEIGHT, a, 0); h = a[0]
@@ -304,7 +305,7 @@ class GlRing {
         GLES20.glUniformMatrix3fv(u("uR"), 1, false, m, 0)
         GLES20.glUniform2f(u("uRes"), w.toFloat(), h.toFloat())
         GLES20.glUniform1f(u("uScale"), scale); GLES20.glUniform1f(u("uWave"), wave); GLES20.glUniform1f(u("uSpin"), spin)
-        GLES20.glUniform1f(u("uTime"), time); GLES20.glUniform1f(u("uPulse"), pulse); GLES20.glUniform1f(u("uForm"), form); GLES20.glUniform1f(u("uLiq"), liq)
+        GLES20.glUniform1f(u("uTime"), time); GLES20.glUniform1f(u("uPulse"), pulse); GLES20.glUniform1f(u("uForm"), form); GLES20.glUniform1f(u("uLiq"), liq); GLES20.glUniform1f(u("uFade"), fade)
         val tw = 0.94f * w; val th = tw / 3f; val cyc = h * 0.36f
         GLES20.glUniform4f(u("uRect"), w * 0.03f, cyc - th / 2f, w * 0.97f, cyc + th / 2f)
         GLES20.glUniform2f(u("uTexel"), 1f / TW, 1f / TH)
@@ -478,17 +479,22 @@ class RingWallpaper : WallpaperService() {
             punchV += -punch * 0.22f; punchV *= 0.82f; punch += punchV
         }
 
+        private var wasPlaying = false; private var idleSince = 0L; private var playSince = 0L
+
         private fun step() {
             if (!visible) return
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val playing = am.isMusicActive
             val now = System.currentTimeMillis()
+            if (playing && !wasPlaying) { playSince = now; idleSince = 0L }
+            if (!playing && wasPlaying) idleSince = now
+            wasPlaying = playing
             if (!playing) {
                 stopViz()
                 bass = 0f; mid = 0f; high = 0f
                 if (now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@RingWallpaper) }
                 render(false, false, now)
-                h.postDelayed(tick, if (blackIdle) 1000L else 66L)
+                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 16L else 1000L) else 66L)
                 return
             }
             startViz()
@@ -512,7 +518,8 @@ class RingWallpaper : WallpaperService() {
                     }
                     gl = ng; g = ng; shown = ""; want = ""; form = 0f
                 }
-                if (!playing && blackIdle) { g.black(); return }
+                if (!playing && blackIdle && (idleSince == 0L || now - idleSince >= 1600L)) { g.black(); return }
+                val fade = if (!playing && blackIdle) 1f - (now - idleSince) / 1600f else if (playing && playSince > 0L && now - playSince < 1000L) (now - playSince) / 1000f else 1f
                 val dt = if (lastNow == 0L) 0.033f else ((now - lastNow) / 1000f).coerceIn(0.004f, 0.1f)
                 lastNow = now
                 if (playing) { simT += dt; updateBands(real, now) } else { punch *= 0.9f }
@@ -533,7 +540,7 @@ class RingWallpaper : WallpaperService() {
                 val fs = form * form * (3f - 2f * form)
                 val ax = -0.95f + 0.09f * Math.sin(rT * 0.31).toFloat()
                 val ay = 0.5f + 0.30f * Math.sin(rT * 0.19).toFloat()
-                g.draw(ax, ay, rScale, 1f + 3.2f * rLoud, rSpin, rT, rPulse.coerceIn(0f, 1f), fs, (0.35f + 0.9f * rLoud).coerceAtMost(1.2f))
+                g.draw(ax, ay, rScale, 1f + 3.2f * rLoud, rSpin, rT, rPulse.coerceIn(0f, 1f), fs, (0.35f + 0.9f * rLoud).coerceAtMost(1.2f), fade.coerceIn(0f, 1f))
             } catch (e: Throwable) {
                 getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("ring_error", "render: " + e.message).apply()
                 failed = true; releaseGl()
