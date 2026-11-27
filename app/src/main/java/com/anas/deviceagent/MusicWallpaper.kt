@@ -291,9 +291,9 @@ class MusicWallpaper : WallpaperService() {
         private fun updateBands(real: Boolean, now: Long) {
             val tb: Float; val tm: Float; val th: Float
             if (real) {
-                tb = Math.min(1f, avg(bands, 0, 4) * 1.6f * inten)
-                tm = Math.min(1f, avg(bands, 4, 16) * 2.2f * inten)
-                th = Math.min(1f, avg(bands, 16, 32) * 3f * inten)
+                tb = Math.min(1f, avg(bands, 0, 4) * 2.2f * inten)
+                tm = Math.min(1f, avg(bands, 4, 16) * 3.0f * inten)
+                th = Math.min(1f, avg(bands, 16, 32) * 3.8f * inten)
             } else {
                 // simulated groove (~120 bpm) when real audio is not available
                 val ph = (now % 500L) / 500f
@@ -335,7 +335,7 @@ class MusicWallpaper : WallpaperService() {
                 val bimg = baseBmp
                 if (playing) updateBands(real, now)
                 val art = MusicState.artColor
-                if (scene == "code") { codeScene.draw(c, w, hh, playing, now, bass, punch, high, MusicState.songTitle, MusicState.songArtist, MusicState.position(), MusicState.durMs); return }
+                if (scene == "code") { codeScene.draw(c, w, hh, playing, now, bass, punch, high, if (playing) MusicState.songTitle else "", if (playing) MusicState.songArtist else "", MusicState.position(), MusicState.durMs); return }
                 if (scene == "moon") { drawMoon(c, w, hh, playing, now); return }
                 if (bimg == null) { drawClassic(c, w, hh, playing, real, art); return }
 

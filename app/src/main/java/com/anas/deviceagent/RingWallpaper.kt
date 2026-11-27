@@ -210,7 +210,7 @@ object VizNorm {
         e /= 16f
         ref = if (e > ref) e else ref * Math.exp((-dt / 6f).toDouble()).toFloat()
         if (ref < 0.03f) ref = 0.03f
-        val k = 0.45f / ref
+        val k = 0.6f / ref
         for (i in raw.indices) raw[i] = Math.min(1f, raw[i] * k)
     }
 }
@@ -519,12 +519,12 @@ class RingWallpaper : WallpaperService() {
                 rT += dt
                 val loudT = if (playing) (0.5f * mid + 0.4f * bass + 0.3f * high).coerceIn(0f, 1f) else 0f
                 rLoud += (loudT - rLoud) * (if (loudT > rLoud) 0.06f else 0.010f) * (dt / 0.033f).coerceAtMost(3f)
-                val sT = 1f + 0.045f * bass + 0.06f * punch.coerceIn(-0.4f, 1f)
+                val sT = 1f + 0.07f * bass + 0.09f * punch.coerceIn(-0.4f, 1f)
                 rScale += (sT - rScale) * 0.2f
-                rPulse += (Math.max(0f, punch) * 0.9f - rPulse) * 0.25f
+                rPulse += (Math.max(0f, punch) * 1.3f - rPulse) * 0.25f
                 rSpin += dt * (0.16f + 0.25f * rLoud)
                 // title: melt old, then form new
-                val t = MusicState.songTitle.trim(); val a = MusicState.songArtist.trim()
+                val t = if (playing) MusicState.songTitle.trim() else ""; val a = if (playing) MusicState.songArtist.trim() else ""
                 want = if (t.isEmpty() && a.isEmpty()) "" else if (a.isEmpty()) t else "$t - $a"
                 if (shown != want) {
                     form -= dt / 0.7f
@@ -533,7 +533,7 @@ class RingWallpaper : WallpaperService() {
                 val fs = form * form * (3f - 2f * form)
                 val ax = -0.95f + 0.09f * Math.sin(rT * 0.31).toFloat()
                 val ay = 0.5f + 0.30f * Math.sin(rT * 0.19).toFloat()
-                g.draw(ax, ay, rScale, 1f + 2.2f * rLoud, rSpin, rT, rPulse.coerceIn(0f, 1f), fs, (0.35f + 0.9f * rLoud).coerceAtMost(1.2f))
+                g.draw(ax, ay, rScale, 1f + 3.2f * rLoud, rSpin, rT, rPulse.coerceIn(0f, 1f), fs, (0.35f + 0.9f * rLoud).coerceAtMost(1.2f))
             } catch (e: Throwable) {
                 getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("ring_error", "render: " + e.message).apply()
                 failed = true; releaseGl()
