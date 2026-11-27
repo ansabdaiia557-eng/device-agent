@@ -38,6 +38,7 @@ uniform float uPulse;
 uniform float uForm;
 uniform float uLiq;
 uniform float uFade;
+uniform float uOffY;
 uniform vec4 uRect;
 uniform vec2 uTexel;
 uniform sampler2D uTex;
@@ -82,7 +83,7 @@ float particles(vec2 uv, float sc, float sp, float seed) {
 void main() {
     vec2 fc = gl_FragCoord.xy;
     float X = (fc.x - uRes.x * 0.5) / uRes.x * 2.0;
-    float Y = (fc.y - uRes.y * 0.5) / uRes.x * 2.0;
+    float Y = (fc.y - uRes.y * 0.5 - uOffY) / uRes.x * 2.0;
     float r = sqrt(X * X + Y * 0.9 * Y * 0.9);
     float base = 0.05 + 0.065 * exp(-r * r * 1.4) - 0.025 * (Y * 0.5);
     vec3 bg = vec3(base * 0.98, base, base * 1.05);
@@ -225,6 +226,52 @@ class GlRing {
     private var tex = 0
     private val loc = HashMap<String, Int>()
     var error = ""
+    var offY = 0f
+    private var oProg = 0
+    private var oTex = 0
+    private var hasOverlay = false
+    private var oFrac = 0f
+    private var oq: java.nio.FloatBuffer = ByteBuffer.allocateDirect(64).order(ByteOrder.nativeOrder()).asFloatBuffer()
+
+    fun setOverlay(bmp: Bitmap?, frac: Float) {
+        if (bmp == null) { hasOverlay = false; return }
+        if (oProg == 0) {
+            val vs = compile(GLES20.GL_VERTEX_SHADER, "attribute vec2 p; attribute vec2 t; varying vec2 v; void main(){ v = t; gl_Position = vec4(p, 0.0, 1.0); }")
+            val fs = compile(GLES20.GL_FRAGMENT_SHADER, "precision mediump float; varying vec2 v; uniform sampler2D s; void main(){ gl_FragColor = texture2D(s, v); }")
+            if (vs == 0 || fs == 0) return
+            oProg = GLES20.glCreateProgram()
+            GLES20.glAttachShader(oProg, vs); GLES20.glAttachShader(oProg, fs)
+            GLES20.glBindAttribLocation(oProg, 0, "p"); GLES20.glBindAttribLocation(oProg, 1, "t")
+            GLES20.glLinkProgram(oProg)
+            val t = IntArray(1); GLES20.glGenTextures(1, t, 0); oTex = t[0]
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, oTex)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        }
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, oTex)
+        android.opengl.GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0)
+        oFrac = frac
+        hasOverlay = true
+    }
+
+    private fun drawOverlay() {
+        if (!hasOverlay || oProg == 0) return
+        val top = -1f + 2f * oFrac
+        oq.position(0)
+        oq.put(floatArrayOf(-1f, -1f, 0f, 1f, 1f, -1f, 1f, 1f, -1f, top, 0f, 0f, 1f, top, 1f, 0f)); oq.position(0)
+        GLES20.glUseProgram(oProg)
+        GLES20.glEnable(GLES20.GL_BLEND); GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, oTex)
+        GLES20.glUniform1i(GLES20.glGetUniformLocation(oProg, "s"), 0)
+        GLES20.glEnableVertexAttribArray(0); GLES20.glEnableVertexAttribArray(1)
+        oq.position(0); GLES20.glVertexAttribPointer(0, 2, GLES20.GL_FLOAT, false, 16, oq)
+        oq.position(2); GLES20.glVertexAttribPointer(1, 2, GLES20.GL_FLOAT, false, 16, oq)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(1)
+        GLES20.glDisable(GLES20.GL_BLEND)
+    }
     private val quad = ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)); position(0) }
     var w = 0; var h = 0
 
@@ -285,6 +332,7 @@ class GlRing {
         EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_HEIGHT, a, 0); h = a[0]
         GLES20.glViewport(0, 0, w, h)
         GLES20.glClearColor(0f, 0f, 0f, 1f); GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        drawOverlay()
         EGL14.eglSwapBuffers(dpy, surf)
     }
 
@@ -305,7 +353,7 @@ class GlRing {
         GLES20.glUniformMatrix3fv(u("uR"), 1, false, m, 0)
         GLES20.glUniform2f(u("uRes"), w.toFloat(), h.toFloat())
         GLES20.glUniform1f(u("uScale"), scale); GLES20.glUniform1f(u("uWave"), wave); GLES20.glUniform1f(u("uSpin"), spin)
-        GLES20.glUniform1f(u("uTime"), time); GLES20.glUniform1f(u("uPulse"), pulse); GLES20.glUniform1f(u("uForm"), form); GLES20.glUniform1f(u("uLiq"), liq); GLES20.glUniform1f(u("uFade"), fade)
+        GLES20.glUniform1f(u("uTime"), time); GLES20.glUniform1f(u("uPulse"), pulse); GLES20.glUniform1f(u("uForm"), form); GLES20.glUniform1f(u("uLiq"), liq); GLES20.glUniform1f(u("uFade"), fade); GLES20.glUniform1f(u("uOffY"), offY)
         val tw = 0.94f * w; val th = tw / 3f; val cyc = h * 0.36f
         GLES20.glUniform4f(u("uRect"), w * 0.03f, cyc - th / 2f, w * 0.97f, cyc + th / 2f)
         GLES20.glUniform2f(u("uTexel"), 1f / TW, 1f / TH)
@@ -315,6 +363,7 @@ class GlRing {
         quad.position(0)
         GLES20.glVertexAttribPointer(0, 2, GLES20.GL_FLOAT, false, 8, quad)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        drawOverlay()
         EGL14.eglSwapBuffers(dpy, surf)
     }
 
@@ -506,6 +555,10 @@ class RingWallpaper : WallpaperService() {
             h.postDelayed(tick, 16)
         }
 
+        private var ovBmp: Bitmap? = null
+        private var ovKey = 0
+        private var rOff = 0f
+
         private fun render(playing: Boolean, real: Boolean, now: Long) {
             try {
                 var g = gl
@@ -516,8 +569,29 @@ class RingWallpaper : WallpaperService() {
                         getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("ring_error", ng.error).apply()
                         failed = true; ng.release(); return
                     }
-                    gl = ng; g = ng; shown = ""; want = ""; form = 0f
+                    gl = ng; g = ng; shown = ""; want = ""; form = 0f; ovKey = 0
                 }
+                val lock = NotifState.show(this@RingWallpaper)
+                val musicCard = lock && playing && (MusicState.songTitle.isNotBlank() || MusicState.songArtist.isNotBlank())
+                val hasCards = lock && (musicCard || NotifState.items.isNotEmpty())
+                val fr = surfaceHolder.surfaceFrame
+                val sw = fr.width(); val sh = fr.height()
+                if (hasCards && sw > 0 && sh > 0) {
+                    val key = java.util.Objects.hash(NotifState.version, musicCard, playing, MusicState.position() / 1000, MusicState.songTitle, MusicState.songArtist, MusicState.art, MusicState.isPlaying, now / 60000, sw, sh)
+                    if (key != ovKey) {
+                        ovKey = key
+                        val rh = (sh * 0.5f).toInt()
+                        var b = ovBmp
+                        if (b == null || b.width != sw || b.height != rh) { b = Bitmap.createBitmap(sw, rh, Bitmap.Config.ARGB_8888); ovBmp = b }
+                        b!!.eraseColor(Color.TRANSPARENT)
+                        val cv = Canvas(b)
+                        cv.translate(0f, -(sh - rh).toFloat())
+                        NotifRender.draw(cv, sw.toFloat(), sh.toFloat(), true, playing)
+                        g.setOverlay(b, rh.toFloat() / sh)
+                    }
+                } else if (ovKey != 0) { g.setOverlay(null, 0f); ovKey = 0 }
+                rOff += ((if (hasCards) 0.075f * sh else 0f) - rOff) * 0.1f
+                g.offY = rOff
                 if (!playing && blackIdle && (idleSince == 0L || now - idleSince >= 1600L)) { g.black(); return }
                 val fade = if (!playing && blackIdle) 1f - (now - idleSince) / 1600f else if (playing && playSince > 0L && now - playSince < 1000L) (now - playSince) / 1000f else 1f
                 val dt = if (lastNow == 0L) 0.033f else ((now - lastNow) / 1000f).coerceIn(0.004f, 0.1f)
@@ -532,7 +606,7 @@ class RingWallpaper : WallpaperService() {
                 rSpin += dt * (0.16f + 0.35f * rLoud)
                 // title: melt old, then form new
                 val t = if (playing) MusicState.songTitle.trim() else ""; val a = if (playing) MusicState.songArtist.trim() else ""
-                want = if (t.isEmpty() && a.isEmpty()) "" else if (a.isEmpty()) t else "$t - $a"
+                want = if (hasCards || (t.isEmpty() && a.isEmpty())) "" else if (a.isEmpty()) t else "$t - $a"
                 if (shown != want) {
                     form -= dt / 0.7f
                     if (form <= 0f) { form = 0f; shown = want; if (want.isNotEmpty()) g.setTitle(GlRing.titleMap(want)) }

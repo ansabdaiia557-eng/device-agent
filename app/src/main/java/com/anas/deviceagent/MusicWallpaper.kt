@@ -425,6 +425,7 @@ class MusicWallpaper : WallpaperService() {
             } catch (e: Throwable) {
             } finally {
                 try { if (c != null && ov > 0.01f) c.drawColor(Color.argb((ov.coerceIn(0f, 1f) * 255).toInt(), 0, 0, 0)) } catch (e: Throwable) {}
+                try { if (c != null && NotifState.show(this@MusicWallpaper)) NotifRender.draw(c, c.width.toFloat(), c.height.toFloat(), scene != "code", playing) } catch (e: Throwable) {}
                 try { if (c != null) holder.unlockCanvasAndPost(c) } catch (e: Throwable) {}
             }
         }
