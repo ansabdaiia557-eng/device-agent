@@ -27,6 +27,7 @@ class MainActivity : Activity() {
     private var pendingLocal: String? = null
     private var pendingShell: String? = null
     private lateinit var attachBtn: Button
+    private lateinit var wpStatus: TextView
 
     private val binderListener = Shizuku.OnBinderReceivedListener { runOnUiThread { refresh() } }
     private val deadListener = Shizuku.OnBinderDeadListener { runOnUiThread { refresh() } }
@@ -164,21 +165,73 @@ class MainActivity : Activity() {
             })
         }
 
+        // ---- wallpaper panel
+        wpStatus = TextView(this).apply { textSize = 14f }
+        val audioBtn = Button(this).apply {
+            text = "1) إذن الصوت (للمؤثرات مع الإيقاع)"
+            setOnClickListener { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 11) }
+        }
+        val chooseBtn = Button(this).apply {
+            text = "2) فعّل خلفية الموسيقى"
+            setOnClickListener {
+                try {
+                    startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+                        .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, MusicWallpaper::class.java)))
+                } catch (e: Exception) {
+                    try { startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) } catch (e2: Exception) {}
+                }
+            }
+        }
+        val listenBtn = Button(this).apply {
+            text = "3) وضع الغلاف الاحتياطي (إذن قراءة الميديا)"
+            setOnClickListener {
+                Thread {
+                    var done = false
+                    if (Sh.granted()) {
+                        val r = Sh.exec(listOf("cmd", "notification", "allow_listener", "$packageName/$packageName.MediaListener"))
+                        done = r.startsWith("exit=0")
+                    }
+                    runOnUiThread {
+                        if (!done) try { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) } catch (e: Exception) {}
+                        refresh()
+                    }
+                }.start()
+            }
+        }
+        val baseBtn = Button(this).apply {
+            text = "4) اجعل الصورة المرفقة (📎) أساس الخلفية"
+            setOnClickListener {
+                val p = pendingLocal
+                if (p == null) { Toast.makeText(this@MainActivity, "ارفق صورة بزرار 📎 الأول", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+                try { java.io.File(p).copyTo(java.io.File(filesDir, "wp_base.jpg"), true); Toast.makeText(this@MainActivity, "تم", Toast.LENGTH_SHORT).show() }
+                catch (e: Exception) { Toast.makeText(this@MainActivity, "فشل", Toast.LENGTH_SHORT).show() }
+            }
+        }
+        val wpPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(8), 0, 0)
+            addView(wpStatus); addView(audioBtn); addView(chooseBtn); addView(listenBtn); addView(baseBtn)
+        }
+
         fun show(i: Int) {
             agentPanel.visibility = if (i == 0) View.VISIBLE else View.GONE
             termPanel.visibility = if (i == 1) View.VISIBLE else View.GONE
+            wpPanel.visibility = if (i == 2) View.VISIBLE else View.GONE
             refresh()
         }
         fun tab(label: String, i: Int) = Button(this).apply { text = label; setOnClickListener { show(i) } }
         val tabs = LinearLayout(this).apply {
             addView(tab("الوكيل", 0), LinearLayout.LayoutParams(0, -2, 1f))
             addView(tab("Terminal", 1), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(tab("الخلفية", 2), LinearLayout.LayoutParams(0, -2, 1f))
         }
         root.addView(status)
         root.addView(row1)
         root.addView(tabs)
         root.addView(agentPanel, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(termPanel, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(wpPanel, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         try {
             Shizuku.addBinderReceivedListenerSticky(binderListener)
@@ -272,5 +325,10 @@ class MainActivity : Activity() {
         }
         status.text = shz
         stopBtn.isEnabled = Agent.running
+        val audio = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val lis = (Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: "").contains(packageName)
+        wpStatus.text = (if (audio) "✅ إذن الصوت" else "⚠️ إذن الصوت ناقص") + "\n" +
+            (if (lis) "✅ إذن الميديا (الغلاف)" else "ℹ️ إذن الميديا مش مفعل (احتياطي)") + "\n" +
+            "الوضع الحالي: " + MusicState.mode + (if (MusicState.title.isNotBlank()) "\n🎵 " + MusicState.title else "")
     }
 }

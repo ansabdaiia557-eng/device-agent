@@ -33,7 +33,7 @@ object Agent {
     }
 
     private const val SYSTEM = """You control an Android phone for the user. Reply with ONE JSON object only:
-{"thought": "short", "action": "shell|script|set_wallpaper|now_playing|done|fail", "path": "", "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
+{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|now_playing|done|fail", "path": "", "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
 PREFER "shell": it runs invisibly in the background as the Android shell user (screen does not move). Put one command in "command" (no pipes, no redirects, no && or ;). Examples:
 - airplane mode: cmd connectivity airplane-mode enable|disable
 - Wi-Fi: svc wifi enable|disable   (if that fails: cmd wifi set-wifi-enabled enabled|disabled)
@@ -59,6 +59,7 @@ Health: dumpsys battery ; dumpsys meminfo ; dumpsys cpuinfo ; cat /proc/meminfo 
 Several commands in one task: action "script" with "commands": [up to 8 commands, run in order, stops on first error/block].
 Images: if the goal contains ATTACHED IMAGE, it was already analysed for you (description in the goal) and saved at the given path. Use that path for file commands (cp/mv to another folder, etc.).
 Wallpaper: action "set_wallpaper" changes the real wallpaper invisibly. Optional "path" (a /sdcard image; default = the attached image), "which" home|lock|both, "dim" 0-0.8, "blur" 0-1, "tint" hex colour, "caption" short text drawn at the bottom (e.g. song title). Pick dim/blur/tint/caption to match what the user asked, e.g. tint to match the song mood.
+Live music wallpaper (moves with the beat): action "wallpaper_base" (optional "path", default = attached image) makes the image the base of the live wallpaper app. Use it when the user wants a wallpaper that moves/reacts to music. "set_wallpaper" is the static one.
 Music: action "now_playing" returns the current track info (title/artist/state/app). Use it when the user mentions the current song.
 Actions: shell ("command"), script ("commands"), set_wallpaper, now_playing, done ("message" = short result for the user), fail ("message" = why).
 Rules: Never enter passwords or payment details, never send money or messages unless the goal says so. Answer "message" in the user's language. Be efficient, few steps."""
@@ -155,6 +156,24 @@ Rules: Never enter passwords or payment details, never send money or messages un
         return "(image analysis failed: ${last.take(150)}. Tell the user vision needs a vision model, set it in settings.)"
     }
 
+    private fun wallpaperBase(j: JSONObject): String {
+        val ctx = appCtx ?: return "error: no context"
+        val path = j.optString("path").trim()
+        val bytes = try {
+            if (path.isNotEmpty()) {
+                if (!ShellPolicy.pathOk(path)) return "error: path must be inside /sdcard"
+                Sh.readBytes(path)
+            } else java.io.File(lastImage ?: return "error: no image attached and no path given").readBytes()
+        } catch (e: Throwable) { return "error: ${e.message}" }
+        return try {
+            val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return "error: not a valid image"
+            val s = Math.min(1f, 2000f / Math.max(bmp.width, bmp.height))
+            val out = if (s < 1f) android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * s).toInt(), (bmp.height * s).toInt(), true) else bmp
+            java.io.File(ctx.filesDir, "wp_base.jpg").outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
+            "ok: image is now the base of the music wallpaper. If the live wallpaper is not active yet, tell the user to tap the Wallpaper tab and activate it once (Android requires the user to pick it)."
+        } catch (e: Throwable) { "error: ${e.message}" }
+    }
+
     private fun nowPlaying(): String {
         if (!Sh.granted()) return "error: Shizuku not ready"
         val raw = try { Sh.exec(listOf("dumpsys", "media_session"), 15, 60000) } catch (e: Throwable) { return "error: ${e.message}" }
@@ -215,7 +234,7 @@ Rules: Never enter passwords or payment details, never send money or messages un
             if (stop) { say("⏹ اتوقف"); return }
             if (action == "done") { say("✅ " + j.optString("message", "تم")); return }
             if (action == "fail") { say("🛑 " + j.optString("message", "مقدرتش")); return }
-            if (action != "shell" && action != "script" && action != "set_wallpaper" && action != "now_playing") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
+            if (action != "shell" && action != "script" && action != "set_wallpaper" && action != "now_playing" && action != "wallpaper_base") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
             val result: String
             val desc: String
             if (action == "script") {
@@ -233,6 +252,8 @@ Rules: Never enter passwords or payment details, never send money or messages un
                 desc = "script (${n} commands)"
             } else if (action == "set_wallpaper") {
                 result = setWallpaper(j); desc = "set_wallpaper"
+            } else if (action == "wallpaper_base") {
+                result = wallpaperBase(j); desc = "wallpaper_base"
             } else if (action == "now_playing") {
                 result = nowPlaying(); desc = "now_playing"
             } else {
