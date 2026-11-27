@@ -51,7 +51,7 @@ object ShellPolicy {
     private val fileReadHeads = setOf("ls", "cat", "stat", "du", "head", "tail", "wc")
     private val fileWriteHeads = setOf("cp", "mv", "mkdir", "touch")
 
-    private fun pathOk(p: String): Boolean {
+    fun pathOk(p: String): Boolean {
         if (p.contains("..") || p.contains("*") || p.contains("?") || p.contains("~") || p.contains("$")) return false
         val q = p.trimEnd('/')
         return q == "/sdcard" || q.startsWith("/sdcard/") || q == "/storage/emulated/0" || q.startsWith("/storage/emulated/0/")

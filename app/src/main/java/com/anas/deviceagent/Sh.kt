@@ -39,4 +39,20 @@ object Sh {
         val c = code?.let { "exit=$it" } ?: "exit=0 (finished)"
         return c + (if (text.isNotEmpty()) "\n" + text.take(maxChars) else "")
     }
+
+    /** Reads a file as the shell user (binary safe). */
+    fun readBytes(path: String, maxBytes: Int = 15_000_000): ByteArray {
+        val p = spawn(listOf("cat", path))
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(65536)
+        val ins = p.inputStream
+        while (true) {
+            val n = ins.read(buf)
+            if (n < 0) break
+            out.write(buf, 0, n)
+            if (out.size() > maxBytes) { try { p.destroy() } catch (e: Exception) {}; throw RuntimeException("file too large") }
+        }
+        try { p.destroy() } catch (e: Exception) {}
+        return out.toByteArray()
+    }
 }

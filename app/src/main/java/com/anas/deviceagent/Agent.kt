@@ -33,7 +33,7 @@ object Agent {
     }
 
     private const val SYSTEM = """You control an Android phone for the user. Reply with ONE JSON object only:
-{"thought": "short", "action": "shell|script|done|fail", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
+{"thought": "short", "action": "shell|script|set_wallpaper|now_playing|done|fail", "path": "", "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
 PREFER "shell": it runs invisibly in the background as the Android shell user (screen does not move). Put one command in "command" (no pipes, no redirects, no && or ;). Examples:
 - airplane mode: cmd connectivity airplane-mode enable|disable
 - Wi-Fi: svc wifi enable|disable   (if that fails: cmd wifi set-wifi-enabled enabled|disabled)
@@ -57,10 +57,14 @@ Files (only inside /sdcard, no .. or wildcards): ls -l /sdcard/Download ; cat /s
 Packages: pm list packages -3 ; pm path <pkg> ; pm install -r /sdcard/x.apk, pm uninstall <pkg>, pm grant|revoke <pkg> <perm> (these ask the user to confirm first; say what you are doing).
 Health: dumpsys battery ; dumpsys meminfo ; dumpsys cpuinfo ; cat /proc/meminfo ; ps -A ; top -b -n 1 ; df ; uptime ; getprop ro.build.version.release. Summarise results nicely in "message" (short, user's language).
 Several commands in one task: action "script" with "commands": [up to 8 commands, run in order, stops on first error/block].
-Actions: shell ("command"), script ("commands"), done ("message" = short result for the user), fail ("message" = why).
+Images: if the goal contains ATTACHED IMAGE, it was already analysed for you (description in the goal) and saved at the given path. Use that path for file commands (cp/mv to another folder, etc.).
+Wallpaper: action "set_wallpaper" changes the real wallpaper invisibly. Optional "path" (a /sdcard image; default = the attached image), "which" home|lock|both, "dim" 0-0.8, "blur" 0-1, "tint" hex colour, "caption" short text drawn at the bottom (e.g. song title). Pick dim/blur/tint/caption to match what the user asked, e.g. tint to match the song mood.
+Music: action "now_playing" returns the current track info (title/artist/state/app). Use it when the user mentions the current song.
+Actions: shell ("command"), script ("commands"), set_wallpaper, now_playing, done ("message" = short result for the user), fail ("message" = why).
 Rules: Never enter passwords or payment details, never send money or messages unless the goal says so. Answer "message" in the user's language. Be efficient, few steps."""
 
-    fun start(ctx: Context, goal: String) {
+    fun start(ctx: Context, goal0: String, imgLocal: String? = null, imgShell: String? = null) {
+        var goal = goal0
         if (running) { say("⚠️ في مهمة شغالة، اضغط إيقاف الأول"); return }
         val prefs = ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE)
         fun p(a: String, b: String, c: String) = Prov(
@@ -71,9 +75,19 @@ Rules: Never enter passwords or payment details, never send money or messages un
         if (!Sh.granted()) { say("⚠️ دوس \"ربط Shizuku\" وصرّح للتطبيق"); return }
         pi = 0
         running = true; stop = false
-        say("🎯 $goal\n⏳ بفكر...")
+        say("🎯 $goal0" + (if (imgLocal != null) "\n🖼 مع صورة" else "") + "\n⏳ بفكر...")
+        appCtx = ctx.applicationContext
+        lastImage = imgLocal ?: lastImage
         val t = Thread {
-            try { loop(goal) }
+            try {
+                if (imgLocal != null) {
+                    say("👁 بحلل الصورة...")
+                    val desc = describeImage(ctx.applicationContext, imgLocal, goal0)
+                    goal += "\n\nATTACHED IMAGE" + (if (imgShell != null) " (saved on the phone at $imgShell)" else "") +
+                        " — vision analysis:\n" + desc
+                }
+                loop(goal)
+            }
             catch (e: InterruptedException) { say("⏹ اتوقف") }
             catch (e: Throwable) {
                 if (stop) { say("⏹ اتوقف"); return@Thread }
@@ -121,6 +135,46 @@ Rules: Never enter passwords or payment details, never send money or messages un
         }
     }
 
+    @Volatile private var appCtx: Context? = null
+    @Volatile private var lastImage: String? = null
+
+    private fun defaultVision(base: String) = if (base.contains("openrouter")) "meta-llama/llama-4-scout" else "meta-llama/llama-4-scout-17b-16e-instruct"
+
+    private fun describeImage(ctx: Context, path: String, goal: String): String {
+        val bytes = java.io.File(path).readBytes()
+        val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        val prefs = ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        val prompt = "The user asked their phone assistant: \"$goal\"\nDescribe this image for the assistant: main subjects, setting, mood, 3 dominant colors as hex, and transcribe any visible text exactly. If the request asks a question about the image, answer it. Max 200 words."
+        var last = ""
+        for ((i, pv) in provs.withIndex()) {
+            val key = if (pv === provs[0] && provs[0].base == prefs.getString("base2", "")?.trim()) "vmodel2" else "vmodel3"
+            val vm = (prefs.getString(key, "") ?: "").trim().ifEmpty { defaultVision(pv.base) }
+            try { return OpenAiCompat.describe(pv.base, pv.key, vm, prompt, b64) }
+            catch (e: Exception) { if (stop) throw e; last = e.message ?: ""; say("⚠️ تحليل الصورة فشل مع ${vm}") }
+        }
+        return "(image analysis failed: ${last.take(150)}. Tell the user vision needs a vision model, set it in settings.)"
+    }
+
+    private fun nowPlaying(): String {
+        if (!Sh.granted()) return "error: Shizuku not ready"
+        val raw = try { Sh.exec(listOf("dumpsys", "media_session"), 15, 60000) } catch (e: Throwable) { return "error: ${e.message}" }
+        val lines = raw.lines().map { it.trim() }.filter { it.startsWith("metadata:") || it.startsWith("state=PlaybackState") || it.startsWith("package=") }
+        return if (lines.isEmpty()) "nothing found playing" else lines.take(6).joinToString("\n").take(600)
+    }
+
+    private fun setWallpaper(j: JSONObject): String {
+        val ctx = appCtx ?: return "error: no context"
+        val path = j.optString("path").trim()
+        val bytes = try {
+            if (path.isNotEmpty()) {
+                if (!ShellPolicy.pathOk(path)) return "error: path must be inside /sdcard"
+                Sh.readBytes(path)
+            } else java.io.File(lastImage ?: return "error: no image attached and no path given").readBytes()
+        } catch (e: Throwable) { return "error: ${e.message}" }
+        return Wallpaper.apply(ctx, bytes, j.optString("which", "both"), j.optDouble("dim", 0.0).toFloat(),
+            j.optDouble("blur", 0.0).toFloat(), j.optString("tint"), j.optString("caption"))
+    }
+
     @Volatile var confirmer: ((String) -> Boolean)? = null
 
     /** Runs one command through the policy. Used by the agent and by the terminal screen. */
@@ -161,7 +215,7 @@ Rules: Never enter passwords or payment details, never send money or messages un
             if (stop) { say("⏹ اتوقف"); return }
             if (action == "done") { say("✅ " + j.optString("message", "تم")); return }
             if (action == "fail") { say("🛑 " + j.optString("message", "مقدرتش")); return }
-            if (action != "shell" && action != "script") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
+            if (action != "shell" && action != "script" && action != "set_wallpaper" && action != "now_playing") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
             val result: String
             val desc: String
             if (action == "script") {
@@ -177,6 +231,10 @@ Rules: Never enter passwords or payment details, never send money or messages un
                 }
                 result = sb.toString().trim().ifEmpty { "no commands" }
                 desc = "script (${n} commands)"
+            } else if (action == "set_wallpaper") {
+                result = setWallpaper(j); desc = "set_wallpaper"
+            } else if (action == "now_playing") {
+                result = nowPlaying(); desc = "now_playing"
             } else {
                 result = shell(j.optString("command"))
                 desc = "shell `${j.optString("command")}`"
