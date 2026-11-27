@@ -532,14 +532,25 @@ class RingWallpaper : WallpaperService() {
 
         override fun onCreate(sh: SurfaceHolder) {
             super.onCreate(sh)
+            applyScale(NotifState.locked(this@RingWallpaper))
+        }
+
+        private var scaledLocked: Boolean? = null
+
+        /** Lock screen: sharper and 60fps. Unlocked (home screen, app drawer): cheaper so the launcher stays smooth. */
+        private fun applyScale(lockedNow: Boolean) {
+            if (scaledLocked == lockedNow) return
+            scaledLocked = lockedNow
             try {
                 val dm = resources.displayMetrics
-                sh.setFixedSize((dm.widthPixels * 0.65f).toInt(), (dm.heightPixels * 0.65f).toInt())
+                val f = if (lockedNow) 0.65f else 0.45f
+                surfaceHolder.setFixedSize((dm.widthPixels * f).toInt(), (dm.heightPixels * f).toInt())
             } catch (e: Throwable) {}
         }
 
         private fun step() {
             if (!visible) return
+            applyScale(NotifState.locked(this@RingWallpaper))
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val playing = am.isMusicActive
             val now = System.currentTimeMillis()
@@ -560,7 +571,7 @@ class RingWallpaper : WallpaperService() {
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else "simple"
             render(true, vizLive, now)
-            val target = if (NotifState.locked(this@RingWallpaper)) 16L else 22L
+            val target = if (NotifState.locked(this@RingWallpaper)) 16L else 33L
             h.postDelayed(tick, Math.max(1L, target - (System.currentTimeMillis() - now)))
         }
 
