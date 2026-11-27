@@ -240,6 +240,7 @@ class MainActivity : Activity() {
             addView(LinearLayout(this@MainActivity).apply {
                 addView(sceneBtn("مشهد: صورتي", "image"), LinearLayout.LayoutParams(0, -2, 1f))
                 addView(sceneBtn("مشهد: القمر 🌙", "moon"), LinearLayout.LayoutParams(0, -2, 1f))
+                addView(sceneBtn("مشهد: الأكواد", "code"), LinearLayout.LayoutParams(0, -2, 1f))
             })
             addView(slider("مكان الموجات والأضواء: أفقي (الراديو)", (st0.ax * 100).toInt(), 100) { s, v -> s.ax = v })
             addView(slider("مكان الموجات والأضواء: رأسي (الراديو)", (st0.ay * 100).toInt(), 100) { s, v -> s.ay = v })

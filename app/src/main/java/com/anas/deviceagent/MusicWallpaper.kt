@@ -26,6 +26,8 @@ import android.view.SurfaceHolder
 object MusicState {
     @Volatile var mode = "idle" // idle | visualizer | cover | simple
     @Volatile var title = ""
+    @Volatile var songTitle = ""
+    @Volatile var songArtist = ""
     @Volatile var listenerOk = true
     @Volatile var art: Bitmap? = null
     @Volatile var artColor = Color.rgb(110, 70, 220)
@@ -37,7 +39,9 @@ object MusicState {
             listenerOk = true
             val c = list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: list.firstOrNull() ?: return
             val md = c.metadata ?: return
-            title = (md.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "") + " " + (md.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "")
+            songTitle = md.getString(MediaMetadata.METADATA_KEY_TITLE) ?: ""
+            songArtist = md.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+            title = songTitle + " " + songArtist
             val bmp = md.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART) ?: md.getBitmap(MediaMetadata.METADATA_KEY_ART)
                 ?: md.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
             if (bmp != null && bmp !== art) {
@@ -90,6 +94,7 @@ class MusicWallpaper : WallpaperService() {
         private val rnd = java.util.Random(7)
         // user settings
         private var S = WStyle()
+        private val codeScene = CodeScene()
         private var scene = "image"
         private var beatFlag = 0f
         private var punch = 0f; private var punchV = 0f
@@ -203,7 +208,7 @@ class MusicWallpaper : WallpaperService() {
                 MusicState.mode = "idle"
                 bass = 0f; mid = 0f; high = 0f; rings.clear()
                 draw(false, false, now)
-                h.postDelayed(tick, 1000)
+                h.postDelayed(tick, if (scene == "code" && codeScene.busy) 50L else 1000L)
                 return
             }
             startViz()
@@ -263,6 +268,7 @@ class MusicWallpaper : WallpaperService() {
                 val bimg = baseBmp
                 if (playing) updateBands(real, now)
                 val art = MusicState.artColor
+                if (scene == "code") { codeScene.draw(c, w, hh, playing, now, bass, punch, high, MusicState.songTitle, MusicState.songArtist); return }
                 if (scene == "moon") { drawMoon(c, w, hh, playing, now); return }
                 if (bimg == null) { drawClassic(c, w, hh, playing, real, art); return }
 
