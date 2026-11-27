@@ -61,6 +61,9 @@ object MusicState {
 class MusicWallpaper : WallpaperService() {
     override fun onCreateEngine(): Engine = E()
 
+    private class Ring(val born: Long, val strength: Float, val ox: Float)
+    private class Dust(var x: Float, var y: Float, val s: Float, val ph: Float)
+
     inner class E : Engine() {
         private val h = Handler(Looper.getMainLooper())
         private var visible = false
@@ -71,11 +74,31 @@ class MusicWallpaper : WallpaperService() {
         private val bands = FloatArray(32)
         private var lastMeta = 0L
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { maskFilter = android.graphics.BlurMaskFilter(14f, android.graphics.BlurMaskFilter.Blur.NORMAL) }
         private var t = 0f
         private var baseBmp: Bitmap? = null
         private var baseW = 0
         private var baseH = 0
-        private var pulse = 0f
+        // beat / band envelopes
+        private var bass = 0f; private var mid = 0f; private var high = 0f
+        private var bassAvg = 0f
+        private var flash = 0f
+        private var shake = 0f
+        private var lastRing = 0L
+        private val rings = ArrayList<Ring>()
+        private val dust = ArrayList<Dust>()
+        private val rnd = java.util.Random(7)
+        // user settings
+        private var S = WStyle()
+        private var ax = 0.5f; private var ay = 0.40f; private var inten = 1f
+        private val tick = Runnable { step() }
+
+        private fun loadSettings() {
+            S = WStyle.load(getSharedPreferences("prefs", Context.MODE_PRIVATE))
+            ax = S.ax; ay = S.ay; inten = S.intensity
+            while (dust.size < S.particleCount) dust.add(Dust(rnd.nextFloat() - 0.5f, rnd.nextFloat() - 0.5f, 0.3f + rnd.nextFloat(), rnd.nextFloat() * 6.28f))
+            while (dust.size > S.particleCount) dust.removeAt(dust.size - 1)
+        }
 
         private fun loadBase(w: Int, h: Int) {
             if (baseBmp != null && baseW == w && baseH == h) return
@@ -83,18 +106,19 @@ class MusicWallpaper : WallpaperService() {
                 val f = java.io.File(filesDir, "wp_base.jpg")
                 if (!f.exists()) { baseBmp = null; return }
                 val src = android.graphics.BitmapFactory.decodeFile(f.absolutePath) ?: return
-                val sc = Math.max(w.toFloat() / src.width, h.toFloat() / src.height) * 1.08f
-                val bw = (src.width * sc).toInt(); val bh = (src.height * sc).toInt()
-                baseBmp = Bitmap.createScaledBitmap(src, bw, bh, true); baseW = w; baseH = h
+                val sc = Math.max(w.toFloat() / src.width, h.toFloat() / src.height)
+                val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                val cv = Canvas(out)
+                val bw = src.width * sc; val bh = src.height * sc
+                cv.drawBitmap(src, null, RectF((w - bw) / 2, (h - bh) / 2, (w + bw) / 2, (h + bh) / 2), Paint(Paint.FILTER_BITMAP_FLAG))
+                baseBmp = out; baseW = w; baseH = h
             } catch (e: Throwable) { baseBmp = null }
         }
-        private val tick = Runnable { step() }
 
         override fun onVisibilityChanged(v: Boolean) {
             visible = v
-            if (v) { baseBmp = null }
             h.removeCallbacks(tick)
-            if (v) h.post(tick) else stopViz()
+            if (v) { baseBmp = null; loadSettings(); h.post(tick) } else stopViz()
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -136,12 +160,12 @@ class MusicWallpaper : WallpaperService() {
                                 s += Math.hypot(re.toDouble(), im.toDouble()).toFloat()
                             }
                             val m = Math.min(1f, s / (to - from) / 60f)
-                            bands[i] = bands[i] * 0.6f + m * 0.4f
+                            bands[i] = m
                             total += m
                         }
                         if (total > 0.05f) lastData = System.currentTimeMillis()
                     }
-                }, Visualizer.getMaxCaptureRate() / 2, false, true)
+                }, Visualizer.getMaxCaptureRate(), false, true)
                 v.enabled = true
                 viz = v
                 vizStart = System.currentTimeMillis()
@@ -159,79 +183,164 @@ class MusicWallpaper : WallpaperService() {
             if (!playing) {
                 stopViz()
                 MusicState.mode = "idle"
-                draw(false, 0f)
+                bass = 0f; mid = 0f; high = 0f; rings.clear()
+                draw(false, false, now)
                 h.postDelayed(tick, 1000)
                 return
             }
             startViz()
             if (now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@MusicWallpaper) }
             val vizLive = viz != null && now - lastData < 3000
-            // visualizer produced nothing for 4s: drop it and retry later
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else if (MusicState.art != null) "cover" else "simple"
-            draw(true, if (vizLive) 1f else 0f)
+            draw(true, vizLive, now)
             h.postDelayed(tick, 33)
         }
 
-        private fun draw(playing: Boolean, real: Float) {
+        private fun avg(a: FloatArray, from: Int, to: Int): Float { var s = 0f; for (i in from until to) s += a[i]; return s / (to - from) }
+
+        private fun updateBands(real: Boolean, now: Long) {
+            val tb: Float; val tm: Float; val th: Float
+            if (real) {
+                tb = Math.min(1f, avg(bands, 0, 4) * 1.6f * inten)
+                tm = Math.min(1f, avg(bands, 4, 16) * 2.2f * inten)
+                th = Math.min(1f, avg(bands, 16, 32) * 3f * inten)
+            } else {
+                // simulated groove (~120 bpm) when real audio is not available
+                val ph = (now % 500L) / 500f
+                val kick = Math.pow(Math.max(0.0, 1.0 - ph * 2.2), 3.0).toFloat()
+                tb = kick * 0.9f * inten
+                tm = (0.35f + 0.25f * Math.sin(t * 3.0).toFloat()) * inten
+                th = (0.3f + 0.3f * Math.sin(t * 9.0).toFloat()) * inten
+            }
+            bass = if (tb > bass) bass + (tb - bass) * 0.7f else bass * 0.86f
+            mid = mid + (tm - mid) * 0.25f
+            high = if (th > high) high + (th - high) * 0.6f else high * 0.85f
+            bassAvg = bassAvg * 0.96f + bass * 0.04f
+            val strong = bass > 0.4f && bass > bassAvg * 1.45f
+            if (strong && now - lastRing > 260) {
+                lastRing = now
+                if (S.waves) {
+                    if (S.waveOrigin == "speakers") { rings.add(Ring(now, bass.coerceIn(0.3f, 1f), -0.095f)); rings.add(Ring(now, bass.coerceIn(0.3f, 1f), 0.095f)) }
+                    else rings.add(Ring(now, bass.coerceIn(0.3f, 1f), 0f))
+                }
+                while (rings.size > 8) rings.removeAt(0)
+                if (S.flicker) flash = 1f
+                if (S.shake && bass > 0.7f) shake = 1f
+            }
+            flash *= 0.84f
+            shake *= 0.80f
+        }
+
+        private fun draw(playing: Boolean, real: Boolean, now: Long) {
             val holder = surfaceHolder
             var c: Canvas? = null
             try {
                 c = holder.lockCanvas() ?: return
                 val w = c.width.toFloat(); val hh = c.height.toFloat()
                 t += 0.033f
-                val base = MusicState.artColor
-                val top = if (playing) Color.argb(255, Color.red(base) / 4, Color.green(base) / 4, Color.blue(base) / 4) else Color.rgb(8, 8, 14)
-                paint.shader = LinearGradient(0f, 0f, 0f, hh, top, Color.BLACK, Shader.TileMode.CLAMP)
-                c.drawRect(0f, 0f, w, hh, paint)
-                paint.shader = null
                 loadBase(c.width, c.height)
                 val bimg = baseBmp
-                if (bimg != null) {
-                    var e = 0f
-                    for (i in 0 until 32) e += if (real > 0f) bands[i] else (0.35f + 0.3f * Math.sin((t * 4f + i * 0.45f).toDouble()).toFloat())
-                    e /= 32f
-                    pulse = pulse * 0.7f + (if (playing) e else 0f) * 0.3f
-                    val z = 1f + 0.05f * pulse
-                    c.save()
-                    c.scale(z, z, w / 2, hh / 2)
-                    c.drawBitmap(bimg, (w - bimg.width) / 2f, (hh - bimg.height) / 2f, null)
-                    c.restore()
-                    if (playing) {
-                        paint.color = MusicState.artColor
-                        paint.alpha = (40 + 90 * pulse).toInt().coerceIn(0, 140)
-                        c.drawRect(0f, 0f, w, hh, paint)
-                        paint.alpha = 255
-                    }
-                }
+                if (playing) updateBands(real, now)
+                val art = MusicState.artColor
+                if (bimg == null) { drawClassic(c, w, hh, playing, real, art); return }
+
+                val cx = ax * w; val cy = ay * hh
+                val ir = inten.coerceIn(0.3f, 1.6f)
+                // global micro shake on heavy hits only
+                c.save()
+                if (shake > 0.05f) c.translate((rnd.nextFloat() - 0.5f) * 10f * S.shakeStrength * shake * ir, (rnd.nextFloat() - 0.5f) * 10f * S.shakeStrength * shake * ir)
+                c.drawBitmap(bimg, 0f, 0f, null)
                 if (playing) {
-                    val art = MusicState.art
-                    if (art != null && real == 0f && bimg == null) {
-                        paint.alpha = 70
-                        c.drawBitmap(art, null, RectF(0f, 0f, w, hh), paint)
+                    val rad = w * 0.2f
+                    // 1) speaker vibration: only a soft round patch around the radio
+                    val s = 1f + (if (S.vibration) 0.014f * bass * ir else 0f)
+                    c.save()
+                    val path = android.graphics.Path(); path.addCircle(cx, cy, rad, android.graphics.Path.Direction.CW)
+                    c.clipPath(path)
+                    if (S.vibration) c.translate((rnd.nextFloat() - 0.5f) * 2.5f * bass * ir, (rnd.nextFloat() - 0.5f) * 2.5f * bass * ir)
+                    c.scale(s, s, cx, cy)
+                    c.drawBitmap(bimg, 0f, 0f, null)
+                    c.restore()
+                    // 6) heavy-hit distortion: faint offset ghost around the radio
+                    if (shake > 0.1f) {
+                        c.save(); c.clipPath(path)
+                        paint.alpha = (60 * shake).toInt()
+                        c.drawBitmap(bimg, 6f * shake, 0f, paint)
                         paint.alpha = 255
+                        c.restore()
                     }
-                    var avg = 0f
-                    val bw = w / 32f
-                    for (i in 0 until 32) {
-                        val v = if (real > 0f) bands[i]
-                        else (0.35f + 0.3f * Math.sin((t * 4f + i * 0.45f).toDouble()).toFloat() + 0.2f * Math.sin((t * 7f - i * 0.8f).toDouble()).toFloat()).coerceIn(0.05f, 1f)
-                        avg += v
-                        val bh = v * hh * 0.35f
-                        paint.color = base
-                        paint.alpha = 200
-                        c.drawRoundRect(RectF(i * bw + bw * 0.15f, hh * 0.78f - bh, (i + 1) * bw - bw * 0.15f, hh * 0.78f + bh * 0.4f), bw / 3, bw / 3, paint)
+                    // 2) sound waves
+                    val it = rings.iterator()
+                    while (it.hasNext()) {
+                        val r = it.next()
+                        val age = (now - r.born) / (1300f / S.waveSpeed)
+                        if (age >= 1f) { it.remove(); continue }
+                        val e = 1f - (1f - age) * (1f - age)
+                        val radius = (w * 0.05f + e * w * (0.2f + 0.14f * r.strength) * ir) * S.waveSize
+                        val rx = cx + r.ox * w
+                        val wc = WStyle.colorOf(S.waveColor, art)
+                        val a = ((1f - age) * 150f * r.strength).toInt().coerceIn(0, 255)
+                        glow.style = Paint.Style.STROKE; glow.strokeWidth = 10f
+                        glow.color = Color.argb(a / 2, Color.red(wc), Color.green(wc), Color.blue(wc))
+                        c.drawCircle(rx, cy, radius, glow)
+                        paint.style = Paint.Style.STROKE; paint.strokeWidth = 2.5f
+                        paint.color = Color.argb(a, 235, 245, 255)
+                        c.drawCircle(rx, cy, radius, paint)
+                        paint.style = Paint.Style.FILL
                     }
-                    avg /= 32f
-                    paint.color = base
-                    paint.alpha = 60
-                    c.drawCircle(w / 2, hh * 0.35f, w * (0.18f + 0.22f * avg), paint)
-                    paint.alpha = 255
+                    // 3) small lights, driven by highs
+                    val ln = if (S.lights) S.lightCount else 0
+                    val lc = WStyle.colorOf(S.lightColor, art)
+                    for (i in 0 until ln) {
+                        val lx = cx + (i - (ln - 1) / 2f) * w * (0.28f / Math.max(ln, 4))
+                        val ly = cy + hh * 0.055f
+                        val pulse = (high * (0.6f + 0.4f * Math.sin(t * 6.0 + i * 1.7).toFloat())).coerceIn(0f, 1f)
+                        glow.style = Paint.Style.FILL
+                        glow.color = Color.argb((40 + 160 * pulse).toInt().coerceIn(0, 220), Color.red(lc), Color.green(lc), Color.blue(lc))
+                        c.drawCircle(lx, ly, 5f + 7f * pulse, glow)
+                        paint.color = Color.argb((60 + 190 * pulse).toInt().coerceIn(0, 255), 255, 255, 255)
+                        c.drawCircle(lx, ly, 2f + 2f * pulse, paint)
+                    }
+                    // 4) dust, drifting faster with mids
+                    val pc = WStyle.colorOf(S.particleColor, art)
+                    for (d in dust) {
+                        d.y -= (0.0006f + 0.0022f * mid) * d.s
+                        d.x += Math.sin((t * d.s + d.ph).toDouble()).toFloat() * 0.0006f * (1f + mid * 3f)
+                        if (d.y < -0.5f) { d.y = 0.5f; d.x = rnd.nextFloat() - 0.5f }
+                        val px = cx + d.x * w * 0.9f
+                        val py = cy + 0.15f * hh + d.y * hh * 0.6f
+                        paint.color = Color.argb((25 + 70 * mid * d.s).toInt().coerceIn(0, 120), Color.red(pc), Color.green(pc), Color.blue(pc))
+                        c.drawCircle(px, py, 1.2f + d.s * 1.6f, paint)
+                    }
+                    // 5) lighting flicker on strong beats
+                    if (flash > 0.05f) {
+                        paint.color = Color.argb((76 * S.flickerStrength * flash * ir).toInt().coerceIn(0, 90), Color.red(art), Color.green(art), Color.blue(art))
+                        c.drawRect(0f, 0f, w, hh * 0.55f, paint)
+                    }
                 }
+                c.restore()
             } catch (e: Throwable) {
             } finally {
                 try { if (c != null) holder.unlockCanvasAndPost(c) } catch (e: Throwable) {}
             }
+        }
+
+        private fun drawClassic(c: Canvas, w: Float, hh: Float, playing: Boolean, real: Boolean, base: Int) {
+            val top = if (playing) Color.argb(255, Color.red(base) / 4, Color.green(base) / 4, Color.blue(base) / 4) else Color.rgb(8, 8, 14)
+            paint.shader = LinearGradient(0f, 0f, 0f, hh, top, Color.BLACK, Shader.TileMode.CLAMP)
+            c.drawRect(0f, 0f, w, hh, paint)
+            paint.shader = null
+            if (!playing) return
+            val bw = w / 32f
+            for (i in 0 until 32) {
+                val v = if (real) bands[i].coerceIn(0.05f, 1f)
+                else (0.2f + 0.6f * bass * (1f - i / 40f) + 0.15f * Math.sin((t * 4f + i * 0.45f).toDouble()).toFloat()).coerceIn(0.05f, 1f)
+                val bh = v * hh * 0.3f
+                paint.color = base; paint.alpha = 200
+                c.drawRoundRect(RectF(i * bw + bw * 0.15f, hh * 0.78f - bh, (i + 1) * bw - bw * 0.15f, hh * 0.78f + bh * 0.4f), bw / 3, bw / 3, paint)
+            }
+            paint.alpha = 255
         }
     }
 }

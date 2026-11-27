@@ -207,11 +207,36 @@ class MainActivity : Activity() {
                 catch (e: Exception) { Toast.makeText(this@MainActivity, "فشل", Toast.LENGTH_SHORT).show() }
             }
         }
+        fun slider(label: String, init: Int, max: Int, apply: (WStyle, Float) -> Unit) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@MainActivity).apply { text = label; textSize = 12f })
+            addView(SeekBar(this@MainActivity).apply {
+                this.max = max
+                progress = init
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) {
+                        if (!u) return
+                        val st = WStyle.load(prefs); apply(st, p / max.toFloat()); st.save(prefs)
+                    }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {}
+                })
+            })
+        }
+        val st0 = WStyle.load(prefs)
+        val resetBtn = Button(this).apply {
+            text = "رجّع الستايل الافتراضي (سينمائي)"
+            setOnClickListener { WStyle.reset(prefs); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
+        }
         val wpPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             setPadding(0, dp(8), 0, 0)
             addView(wpStatus); addView(audioBtn); addView(chooseBtn); addView(listenBtn); addView(baseBtn)
+            addView(slider("مكان الموجات والأضواء: أفقي (الراديو)", (st0.ax * 100).toInt(), 100) { s, v -> s.ax = v })
+            addView(slider("مكان الموجات والأضواء: رأسي (الراديو)", (st0.ay * 100).toInt(), 100) { s, v -> s.ay = v })
+            addView(slider("شدة التأثير", ((st0.intensity - 0.3f) / 1.3f * 100).toInt(), 100) { s, v -> s.intensity = 0.3f + v * 1.3f })
+            addView(resetBtn)
         }
 
         fun show(i: Int) {
