@@ -62,7 +62,7 @@ class MusicWallpaper : WallpaperService() {
     override fun onCreateEngine(): Engine = E()
 
     private class Ring(val born: Long, val strength: Float, val ox: Float)
-    private class Dust(var x: Float, var y: Float, val s: Float, val ph: Float)
+    private class Dust(var x: Float, var y: Float, val s: Float, val ph: Float) { var vx = 0f; var vy = 0f }
 
     inner class E : Engine() {
         private val h = Handler(Looper.getMainLooper())
@@ -90,11 +90,26 @@ class MusicWallpaper : WallpaperService() {
         private val rnd = java.util.Random(7)
         // user settings
         private var S = WStyle()
+        private var scene = "image"
+        private var beatFlag = 0f
+        private var punch = 0f; private var punchV = 0f
+        // moon scene state
+        private val stars = FloatArray(90 * 4)
+        private var moonShader: android.graphics.RadialGradient? = null
+        private var glowShader: android.graphics.RadialGradient? = null
+        private var shaderW = 0f
+        private var bgShader: LinearGradient? = null
+        private var moonBump = 0f
+        private var fallState = 0       // 0 sit, 1 wobble, 2 fall, 3 lying, 4 rise
+        private var fallT0 = 0L
+        private var lastFall = 0L
         private var ax = 0.5f; private var ay = 0.40f; private var inten = 1f
         private val tick = Runnable { step() }
 
         private fun loadSettings() {
             S = WStyle.load(getSharedPreferences("prefs", Context.MODE_PRIVATE))
+            scene = getSharedPreferences("prefs", Context.MODE_PRIVATE).getString("wp_scene", "image") ?: "image"
+            if (stars[0] == 0f) { val r = java.util.Random(11); for (i in 0 until 90) { stars[i * 4] = r.nextFloat(); stars[i * 4 + 1] = r.nextFloat() * 0.75f; stars[i * 4 + 2] = r.nextFloat() * 6.28f; stars[i * 4 + 3] = 0.4f + r.nextFloat() } }
             ax = S.ax; ay = S.ay; inten = S.intensity
             while (dust.size < S.particleCount) dust.add(Dust(rnd.nextFloat() - 0.5f, rnd.nextFloat() - 0.5f, 0.3f + rnd.nextFloat(), rnd.nextFloat() * 6.28f))
             while (dust.size > S.particleCount) dust.removeAt(dust.size - 1)
@@ -213,12 +228,14 @@ class MusicWallpaper : WallpaperService() {
                 tm = (0.35f + 0.25f * Math.sin(t * 3.0).toFloat()) * inten
                 th = (0.3f + 0.3f * Math.sin(t * 9.0).toFloat()) * inten
             }
-            bass = if (tb > bass) bass + (tb - bass) * 0.7f else bass * 0.86f
+            bass = if (tb > bass) bass + (tb - bass) * 0.92f else bass * 0.82f
             mid = mid + (tm - mid) * 0.25f
             high = if (th > high) high + (th - high) * 0.6f else high * 0.85f
             bassAvg = bassAvg * 0.96f + bass * 0.04f
             val strong = bass > 0.4f && bass > bassAvg * 1.45f
-            if (strong && now - lastRing > 260) {
+            if (strong) { beatFlag = bass; punchV += 0.8f * bass; for (d in dust) { d.vx += d.x * 0.05f * bass; d.vy += (d.y * 0.04f - 0.004f) * bass } }
+            punchV += -punch * 0.28f; punchV *= 0.80f; punch += punchV
+            if (strong && now - lastRing > 170) {
                 lastRing = now
                 if (S.waves) {
                     if (S.waveOrigin == "speakers") { rings.add(Ring(now, bass.coerceIn(0.3f, 1f), -0.095f)); rings.add(Ring(now, bass.coerceIn(0.3f, 1f), 0.095f)) }
@@ -243,6 +260,7 @@ class MusicWallpaper : WallpaperService() {
                 val bimg = baseBmp
                 if (playing) updateBands(real, now)
                 val art = MusicState.artColor
+                if (scene == "moon") { drawMoon(c, w, hh, playing, now); return }
                 if (bimg == null) { drawClassic(c, w, hh, playing, real, art); return }
 
                 val cx = ax * w; val cy = ay * hh
@@ -254,7 +272,7 @@ class MusicWallpaper : WallpaperService() {
                 if (playing) {
                     val rad = w * 0.2f
                     // 1) speaker vibration: only a soft round patch around the radio
-                    val s = 1f + (if (S.vibration) 0.014f * bass * ir else 0f)
+                    val s = 1f + (if (S.vibration) (0.010f * bass + 0.02f * punch) * ir else 0f)
                     c.save()
                     val path = android.graphics.Path(); path.addCircle(cx, cy, rad, android.graphics.Path.Direction.CW)
                     c.clipPath(path)
@@ -276,15 +294,15 @@ class MusicWallpaper : WallpaperService() {
                         val r = it.next()
                         val age = (now - r.born) / (1300f / S.waveSpeed)
                         if (age >= 1f) { it.remove(); continue }
-                        val e = 1f - (1f - age) * (1f - age)
+                        val e = 1f - (1f - age) * (1f - age) * (1f - age)
                         val radius = (w * 0.05f + e * w * (0.2f + 0.14f * r.strength) * ir) * S.waveSize
                         val rx = cx + r.ox * w
                         val wc = WStyle.colorOf(S.waveColor, art)
                         val a = ((1f - age) * 150f * r.strength).toInt().coerceIn(0, 255)
-                        glow.style = Paint.Style.STROKE; glow.strokeWidth = 10f
+                        glow.style = Paint.Style.STROKE; glow.strokeWidth = 14f * (1f - age) + 3f
                         glow.color = Color.argb(a / 2, Color.red(wc), Color.green(wc), Color.blue(wc))
                         c.drawCircle(rx, cy, radius, glow)
-                        paint.style = Paint.Style.STROKE; paint.strokeWidth = 2.5f
+                        paint.style = Paint.Style.STROKE; paint.strokeWidth = 4f * (1f - age) + 1.2f
                         paint.color = Color.argb(a, 235, 245, 255)
                         c.drawCircle(rx, cy, radius, paint)
                         paint.style = Paint.Style.FILL
@@ -305,9 +323,10 @@ class MusicWallpaper : WallpaperService() {
                     // 4) dust, drifting faster with mids
                     val pc = WStyle.colorOf(S.particleColor, art)
                     for (d in dust) {
-                        d.y -= (0.0006f + 0.0022f * mid) * d.s
-                        d.x += Math.sin((t * d.s + d.ph).toDouble()).toFloat() * 0.0006f * (1f + mid * 3f)
-                        if (d.y < -0.5f) { d.y = 0.5f; d.x = rnd.nextFloat() - 0.5f }
+                        d.vx *= 0.92f; d.vy *= 0.92f
+                        d.x += d.vx + (Math.cos((t * 1.2f * d.s + d.ph).toDouble()).toFloat()) * 0.0016f * (1f + mid * 5f) * d.s
+                        d.y += d.vy - (0.0008f + 0.0042f * mid) * d.s + (Math.sin((t * 0.9f * d.s + d.ph * 2f).toDouble()).toFloat()) * 0.0010f * (1f + mid * 4f)
+                        if (d.y < -0.5f || d.x < -0.7f || d.x > 0.7f || d.y > 0.7f) { d.y = 0.5f; d.x = rnd.nextFloat() - 0.5f; d.vx = 0f; d.vy = 0f }
                         val px = cx + d.x * w * 0.9f
                         val py = cy + 0.15f * hh + d.y * hh * 0.6f
                         paint.color = Color.argb((25 + 70 * mid * d.s).toInt().coerceIn(0, 120), Color.red(pc), Color.green(pc), Color.blue(pc))
@@ -324,6 +343,86 @@ class MusicWallpaper : WallpaperService() {
             } finally {
                 try { if (c != null) holder.unlockCanvasAndPost(c) } catch (e: Throwable) {}
             }
+        }
+
+        private fun ease(p: Float) = p * p * (3f - 2f * p)
+        private fun backOut(p: Float): Float { val s = 1.70158f; val q = p - 1f; return 1f + q * q * ((s + 1f) * q + s) }
+
+        private fun drawMoon(c: Canvas, w: Float, hh: Float, playing: Boolean, now: Long) {
+            if (shaderW != w) {
+                shaderW = w
+                val mr = w * 0.34f; val mcx = w / 2; val mcy = hh * 0.66f
+                bgShader = LinearGradient(0f, 0f, 0f, hh, Color.rgb(4, 5, 14), Color.rgb(12, 16, 40), Shader.TileMode.CLAMP)
+                glowShader = android.graphics.RadialGradient(mcx, mcy, mr * 2.1f, intArrayOf(Color.argb(110, 200, 210, 255), Color.argb(40, 120, 140, 230), Color.argb(0, 20, 30, 80)), floatArrayOf(0.4f, 0.65f, 1f), Shader.TileMode.CLAMP)
+                moonShader = android.graphics.RadialGradient(mcx - mr * 0.25f, mcy - mr * 0.25f, mr * 1.3f, Color.rgb(252, 250, 235), Color.rgb(196, 200, 214), Shader.TileMode.CLAMP)
+            }
+            paint.shader = bgShader; c.drawRect(0f, 0f, w, hh, paint); paint.shader = null
+            // stars
+            for (i in 0 until 90) {
+                val tw = 0.55f + 0.3f * Math.sin((t * 1.3f * stars[i * 4 + 3] + stars[i * 4 + 2]).toDouble()).toFloat() + (if (playing) 0.25f * high else 0f)
+                paint.color = Color.argb((255 * tw.coerceIn(0.1f, 1f)).toInt(), 255, 255, 240)
+                c.drawCircle(stars[i * 4] * w, stars[i * 4 + 1] * hh, 1.2f + stars[i * 4 + 3] * 1.3f * (1f + 0.4f * (if (playing) high else 0f) + 0.5f * Math.max(0f, punch)), paint)
+            }
+            val mr = w * 0.34f * (1f + 0.02f * bass + 0.03f * punch + moonBump); val mcx = w / 2; val mcy = hh * 0.66f
+            paint.shader = glowShader; c.drawCircle(mcx, mcy, mr * 2.1f, paint)
+            paint.shader = moonShader; c.drawCircle(mcx, mcy, mr, paint); paint.shader = null
+            paint.color = Color.argb(28, 90, 95, 120)
+            c.drawCircle(mcx - mr * 0.35f, mcy - mr * 0.15f, mr * 0.16f, paint)
+            c.drawCircle(mcx + mr * 0.30f, mcy + mr * 0.25f, mr * 0.22f, paint)
+            c.drawCircle(mcx + mr * 0.1f, mcy - mr * 0.5f, mr * 0.09f, paint)
+            c.drawCircle(mcx - mr * 0.2f, mcy + mr * 0.45f, mr * 0.12f, paint)
+
+            // fall state machine
+            if (playing && beatFlag > 0f && fallState == 0 && now - lastFall > 6000 && bass > 0.5f) { fallState = 1; fallT0 = now }
+            beatFlag = 0f
+            val el = (now - fallT0).toFloat()
+            var ang = 0f; var hop = 0f; var kick = 0f
+            when (fallState) {
+                0 -> { if (playing) { ang = 1.4f * Math.sin((t * 2.2f).toDouble()).toFloat(); kick = 9f * Math.sin((t * 3.1f).toDouble()).toFloat(); hop = 0.5f * punch.coerceIn(0f, 1.5f) } }
+                1 -> { ang = 11f * Math.sin((el / 38f).toDouble()).toFloat() * (el / 320f).coerceAtMost(1f); kick = 25f * Math.sin((el / 30f).toDouble()).toFloat(); if (el > 320f) { fallState = 2; fallT0 = now } }
+                2 -> { val p = Math.min(1f, el / 480f); ang = -108f * p * p * (3f - 2f * p) * (1f + 0.04f * p); kick = 22f * Math.sin((el / 40f).toDouble()).toFloat(); if (el > 480f) { fallState = 3; fallT0 = now; moonBump = 0.03f; punchV += 0.9f } }
+                3 -> { val d = Math.exp((-el / 330f).toDouble()).toFloat(); val bounce = Math.abs(Math.sin((el / 95f).toDouble())).toFloat() * d
+                    ang = -108f + 9f * bounce; hop = 3.2f * bounce; kick = 14f * Math.sin((el / 70f).toDouble()).toFloat() * d
+                    if (el > 1100f) { fallState = 4; fallT0 = now } }
+                4 -> { val p = Math.min(1f, el / 900f); ang = -108f * (1f - backOut(p)); hop = Math.sin(p * Math.PI).toFloat() * 4.5f; kick = 12f * Math.sin((p * 14f).toDouble()).toFloat() * (1f - p); if (el > 900f) { fallState = 0; lastFall = now } }
+            }
+            moonBump *= 0.88f
+            // person + chair, local unit u, origin = back foot of chair on the moon top
+            val u = w * 0.0105f
+            val gx = mcx - 3f * u; val gy = mcy - mr + 0.4f * u
+            c.save()
+            c.translate(gx, gy - hop * u)
+            c.rotate(ang)
+            val ink = Color.rgb(6, 6, 12)
+            paint.color = ink
+            paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeWidth = 1.1f * u
+            c.drawLine(0f, 0f, 0f, -8f * u, paint)            // chair back leg
+            c.drawLine(9f * u, 0f, 9f * u, -8f * u, paint)    // chair front leg
+            c.drawLine(0f, -8f * u, 0f, -18f * u, paint)      // backrest
+            paint.strokeWidth = 1.4f * u
+            c.drawLine(-0.3f * u, -8f * u, 9.8f * u, -8f * u, paint) // seat
+            paint.strokeWidth = 4.2f * u                       // torso
+            c.drawLine(3f * u, -10.5f * u, 3f * u, -16.5f * u, paint)
+            paint.strokeWidth = 2.2f * u                       // thigh
+            c.drawLine(3f * u, -10f * u, 10.5f * u, -10f * u, paint)
+            c.save()                                            // shin swings from the knee
+            c.translate(10.5f * u, -10f * u); c.rotate(kick)
+            paint.strokeWidth = 1.9f * u
+            c.drawLine(0f, 0f, 0f, 7f * u, paint)
+            c.restore()
+            paint.strokeWidth = 1.5f * u                       // arm resting on the knee
+            c.drawLine(3f * u, -15f * u, 7f * u, -12.5f * u, paint)
+            paint.style = Paint.Style.FILL
+            c.drawCircle(3.6f * u, -20.2f * u, 2.5f * u, paint) // head
+            if (fallState == 3) {
+                paint.color = Color.argb(230, 255, 230, 120)
+                for (k in 0 until 3) {
+                    val a = t * 7f + k * 2.09f
+                    c.drawCircle(3.6f * u + Math.cos(a.toDouble()).toFloat() * 4.6f * u, -23.8f * u + Math.sin(a.toDouble()).toFloat() * 1.4f * u, 0.7f * u, paint)
+                }
+            }
+            c.restore()
         }
 
         private fun drawClassic(c: Canvas, w: Float, hh: Float, playing: Boolean, real: Boolean, base: Int) {

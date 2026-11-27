@@ -33,7 +33,7 @@ object Agent {
     }
 
     private const val SYSTEM = """You control an Android phone for the user. Reply with ONE JSON object only:
-{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|now_playing|done|fail", "path": "", "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
+{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|set_wallpaper_scene|now_playing|done|fail", "path": "", "scene": "moon|image", "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
 PREFER "shell": it runs invisibly in the background as the Android shell user (screen does not move). Put one command in "command" (no pipes, no redirects, no && or ;). Examples:
 - airplane mode: cmd connectivity airplane-mode enable|disable
 - Wi-Fi: svc wifi enable|disable   (if that fails: cmd wifi set-wifi-enabled enabled|disabled)
@@ -61,6 +61,7 @@ Images: if the goal contains ATTACHED IMAGE, it was already analysed for you (de
 Wallpaper: action "set_wallpaper" changes the real wallpaper invisibly. Optional "path" (a /sdcard image; default = the attached image), "which" home|lock|both, "dim" 0-0.8, "blur" 0-1, "tint" hex colour, "caption" short text drawn at the bottom (e.g. song title). Pick dim/blur/tint/caption to match what the user asked, e.g. tint to match the song mood.
 Live music wallpaper (moves with the beat): action "wallpaper_base" (optional "path", default = attached image) makes the image the base of the live wallpaper app. Use it when the user wants a wallpaper that moves/reacts to music. "set_wallpaper" is the static one.
 Wallpaper style: when the user describes how the live wallpaper should look/animate (waves, particles, lights, flicker, shake, colours, intensity, where effects sit), use action "set_wallpaper_style" (the app reads the user's full message itself, you may leave "text" empty). "reset_wallpaper_style" returns to the default cinematic style. Do not use shell for this.
+Wallpaper scenes: action "set_wallpaper_scene" with "scene": "moon" (dark calm night: glowing moon, a silhouette person on a chair who tips over on strong bass hits and gets back up, twinkling stars) or "image" (the user's own base image with the style effects). Use it for "حط خلفية القمر" etc.
 Music: action "now_playing" returns the current track info (title/artist/state/app). Use it when the user mentions the current song.
 Actions: shell ("command"), script ("commands"), set_wallpaper, now_playing, done ("message" = short result for the user), fail ("message" = why).
 Rules: Never enter passwords or payment details, never send money or messages unless the goal says so. Answer "message" in the user's language. Be efficient, few steps."""
@@ -189,6 +190,14 @@ Rules: Never enter passwords or payment details, never send money or messages un
         return "ok: wallpaper style updated (${changed.joinToString(", ")}). Live wallpaper applies it next time the screen turns on."
     }
 
+    private fun setWallpaperScene(j: JSONObject): String {
+        val ctx = appCtx ?: return "error: no context"
+        val sc = j.optString("scene").lowercase().trim()
+        val v = if (sc.contains("moon") || sc.contains("قمر")) "moon" else if (sc == "image" || sc.contains("صور")) "image" else return "error: scene must be moon or image"
+        ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("wp_scene", v).apply()
+        return "ok: wallpaper scene = $v. Lock and unlock the screen to see it. If the music wallpaper is not active yet, tell the user to activate it once from the Wallpaper tab."
+    }
+
     private fun resetWallpaperStyle(): String {
         val ctx = appCtx ?: return "error: no context"
         WStyle.reset(ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE))
@@ -255,7 +264,7 @@ Rules: Never enter passwords or payment details, never send money or messages un
             if (stop) { say("⏹ اتوقف"); return }
             if (action == "done") { say("✅ " + j.optString("message", "تم")); return }
             if (action == "fail") { say("🛑 " + j.optString("message", "مقدرتش")); return }
-            if (action != "shell" && action != "script" && action != "set_wallpaper" && action != "now_playing" && action != "wallpaper_base" && action != "set_wallpaper_style" && action != "reset_wallpaper_style") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
+            if (action != "shell" && action != "script" && action != "set_wallpaper" && action != "now_playing" && action != "wallpaper_base" && action != "set_wallpaper_style" && action != "reset_wallpaper_style" && action != "set_wallpaper_scene") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
             val result: String
             val desc: String
             if (action == "script") {
@@ -277,6 +286,8 @@ Rules: Never enter passwords or payment details, never send money or messages un
                 result = wallpaperBase(j); desc = "wallpaper_base"
             } else if (action == "set_wallpaper_style") {
                 result = setWallpaperStyle(j); desc = "set_wallpaper_style"
+            } else if (action == "set_wallpaper_scene") {
+                result = setWallpaperScene(j); desc = "set_wallpaper_scene"
             } else if (action == "reset_wallpaper_style") {
                 result = resetWallpaperStyle(); desc = "reset_wallpaper_style"
             } else if (action == "now_playing") {

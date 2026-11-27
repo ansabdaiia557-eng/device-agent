@@ -228,11 +228,19 @@ class MainActivity : Activity() {
             text = "رجّع الستايل الافتراضي (سينمائي)"
             setOnClickListener { WStyle.reset(prefs); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
         }
+        fun sceneBtn(label: String, v: String) = Button(this).apply {
+            text = label
+            setOnClickListener { prefs.edit().putString("wp_scene", v).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
+        }
         val wpPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             setPadding(0, dp(8), 0, 0)
             addView(wpStatus); addView(audioBtn); addView(chooseBtn); addView(listenBtn); addView(baseBtn)
+            addView(LinearLayout(this@MainActivity).apply {
+                addView(sceneBtn("مشهد: صورتي", "image"), LinearLayout.LayoutParams(0, -2, 1f))
+                addView(sceneBtn("مشهد: القمر 🌙", "moon"), LinearLayout.LayoutParams(0, -2, 1f))
+            })
             addView(slider("مكان الموجات والأضواء: أفقي (الراديو)", (st0.ax * 100).toInt(), 100) { s, v -> s.ax = v })
             addView(slider("مكان الموجات والأضواء: رأسي (الراديو)", (st0.ay * 100).toInt(), 100) { s, v -> s.ay = v })
             addView(slider("شدة التأثير", ((st0.intensity - 0.3f) / 1.3f * 100).toInt(), 100) { s, v -> s.intensity = 0.3f + v * 1.3f })
