@@ -25,7 +25,6 @@ object Agent {
     @Volatile private var thread: Thread? = null
     fun stop() {
         stop = true
-        Gemini.cancel()
         OpenAiCompat.cancel()
         thread?.interrupt()
     }
@@ -51,13 +50,12 @@ Rules: use only indexes from the current screen. If the screen is not what you e
         if (running) { say("⚠️ في مهمة شغالة، اضغط إيقاف الأول"); return }
         val svc0 = AgentService.instance
         val prefs = ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE)
-        val key = prefs.getString("key", "") ?: ""
         fallback = Fallback(
             prefs.getString("base2", "")?.trim() ?: "",
             prefs.getString("model2", "")?.trim() ?: "",
             prefs.getString("key2", "")?.trim() ?: "")
-        val model = (prefs.getString("model", "gemini-3.8-flash") ?: "gemini-3.8-flash").let { if (it == "gemini-2.5-flash") "gemini-3.8-flash" else it }
-        if (key.isBlank()) { say("⚠️ حط مفتاح Gemini الأول من الإعدادات فوق"); return }
+        val key = ""; val model = ""
+        if (!fallback.usable()) { say("⚠️ املا خانات المزود (Base URL والموديل والمفتاح) واضغط حفظ"); return }
         if (svc0 == null) { say("⚠️ فعّل خدمة الوصول (Accessibility) الأول"); return }
         running = true; stop = false; useFallback = false
         say("🎯 $goal\n⏳ بفكر...")
@@ -67,8 +65,8 @@ Rules: use only indexes from the current screen. If the screen is not what you e
             catch (e: Throwable) {
                 if (stop) { say("⏹ اتوقف"); return@Thread }
                 val m = e.message ?: ""
-                say(if (m.contains("HTTP 404")) "❌ اسم الموديل غلط أو مش متاح. غيّره من خانة الموديل فوق (جرب gemini-3.8-flash) واضغط حفظ.\n$m"
-                else if (m.contains("HTTP 400") && m.contains("API key")) "❌ مفتاح Gemini غلط. راجعه واضغط حفظ.\n$m"
+                say(if (m.contains("HTTP 404")) "❌ اسم الموديل أو الـ Base URL غلط. راجعهم واضغط حفظ.\n$m"
+                else if (m.contains("HTTP 401")) "❌ المفتاح غلط. راجعه واضغط حفظ.\n$m"
                 else "❌ $m")
             }
             finally { running = false; stop = false; thread = null; onFinished?.invoke() }
@@ -87,31 +85,14 @@ Rules: use only indexes from the current screen. If the screen is not what you e
     private fun generateWithRetry(key: String, model: String, prompt: String): String {
         var attempt = 0
         while (true) {
-            val usingFallback = useFallback
             try {
-                return if (usingFallback)
-                    OpenAiCompat.generate(fallback.base, fallback.key, fallback.model, SYSTEM, prompt)
-                else Gemini.generate(key, model, SYSTEM, prompt)
+                return OpenAiCompat.generate(fallback.base, fallback.key, fallback.model, SYSTEM, prompt)
             } catch (e: Exception) {
                 if (stop) throw e
                 attempt++
-                if (!isTemp(e)) {
-                    if (!usingFallback && fallback.usable()) {
-                        say("🔀 Gemini فيه مشكلة، بحوّل للمزود التاني (${fallback.model})")
-                        useFallback = true; attempt = 0; continue
-                    }
-                    throw e
-                }
-                val limit = if (!usingFallback && fallback.usable()) 2 else 5
-                if (attempt >= limit) {
-                    if (!usingFallback && fallback.usable()) {
-                        say("🔀 Gemini مشغول، حوّلت للمزود التاني (${fallback.model})")
-                        useFallback = true; attempt = 0; continue
-                    }
-                    throw e
-                }
+                if (!isTemp(e) || attempt >= 5) throw e
                 val wait = 2L shl (attempt - 1)
-                say("🔁 ${if (usingFallback) "المزود التاني" else "جوجل"} مشغول شوية، هحاول تاني بعد ${wait} ث ($attempt/$limit)")
+                say("🔁 المزود مشغول شوية، هحاول تاني بعد ${wait} ث ($attempt/5)")
                 Thread.sleep(wait * 1000)
             }
         }
