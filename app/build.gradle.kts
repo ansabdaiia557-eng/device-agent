@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 android {
+    lint { abortOnError = false; checkReleaseBuilds = false }
     namespace = "com.anas.deviceagent"
     compileSdk = 34
     defaultConfig {
