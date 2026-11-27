@@ -126,17 +126,34 @@ class CodeScene {
         cvx = mx * w - ox; cvy = my * h - oy
     }
 
+    private val gpBloom = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val sarc = FloatArray(400); private val sdepth = FloatArray(400)
+    private var flyEnd = 1500f
+    private var landedFrac = 0f; private var swp = -1f
+    private val pose = FloatArray(4)
+    private fun ease(q: Float): Float { val e = (1.0 - Math.pow(2.0, -8.0 * q)) / (1.0 - Math.pow(2.0, -8.0)); return (e + 0.05 * Math.sin(Math.PI * q) * (1 - q)).toFloat() }
+    private fun chPose(i: Int, q: Float) {
+        val f = 1f - ease(q.coerceIn(0f, 1f))
+        pose[0] = sox[i] * f - soy[i] * sarc[i] * f; pose[1] = soy[i] * f + sox[i] * sarc[i] * f
+        pose[2] = sang[i] * f; pose[3] = 1f + 1.6f * sdepth[i] * f
+    }
+
     private fun scatter(n: Int, w: Float, h: Float) {
+        var endMax = 0f
         for (i in 0 until Math.min(n, 400)) {
             val a = rnd.nextFloat() * 6.2832f
             val r = Math.max(w, h) * (0.7f + rnd.nextFloat() * 0.6f)
             sox[i] = Math.cos(a.toDouble()).toFloat() * r; soy[i] = Math.sin(a.toDouble()).toFloat() * r
             sang[i] = (rnd.nextFloat() - 0.5f) * 14f
-            sdel[i] = rnd.nextFloat() * 520f + i * 8f
-            sdur[i] = 750f + rnd.nextFloat() * 650f
+            val d = Math.abs(i - (n - 1) / 2f) / Math.max(1f, n / 2f)
+            sdel[i] = 350f + d * 650f + rnd.nextFloat() * 140f
+            sdur[i] = 900f + rnd.nextFloat() * 500f
+            sarc[i] = (rnd.nextFloat() - 0.5f) * 0.9f; sdepth[i] = 0.4f + 0.6f * rnd.nextFloat()
+            endMax = Math.max(endMax, sdel[i] + sdur[i])
         }
+        flyEnd = Math.max(endMax, 1200f)
         val a = rnd.nextFloat() * 6.2832f
-        rtlFly = Pair(Math.cos(a.toDouble()).toFloat() * w, Math.sin(a.toDouble()).toFloat() * h * 0.6f); rtlAng = (rnd.nextFloat() - 0.5f) * 0.5f
+        rtlFly = Pair(Math.cos(a.toDouble()).toFloat() * w * 0.9f, Math.sin(a.toDouble()).toFloat() * h * 0.5f); rtlAng = (rnd.nextFloat() - 0.5f) * 0.5f
     }
 
     private fun updateFly(now: Long, w: Float, h: Float) {
@@ -144,10 +161,14 @@ class CodeScene {
         if (flyPhase == 0 && s != target) {
             if (s.isEmpty() || s.startsWith("//")) { shown.setLength(0); shown.append(target); scatter(target.length, w, h); flyPhase = 2; flyT0 = now }
             else { scatter(s.length, w, h); flyPhase = 1; flyT0 = now }
-        } else if (flyPhase == 1 && now - flyT0 > 420) {
+        } else if (flyPhase == 1 && now - flyT0 > 620) {
             shown.setLength(0); shown.append(target); scatter(target.length, w, h); flyPhase = 2; flyT0 = now
-        } else if (flyPhase == 2 && now - flyT0 > 520 + target.length * 8 + 1450) flyPhase = 0
+        } else if (flyPhase == 2 && now - flyT0 > flyEnd.toLong() + 1000) flyPhase = 0
+        val tph = (now - flyT0).toFloat()
+        landedFrac = if (flyPhase == 2) ((tph - 350f) / Math.max(1f, flyEnd - 350f)).coerceIn(0f, 1f) else if (flyPhase == 1) 0f else 1f
+        swp = if (flyPhase == 2) (tph - flyEnd) / 1000f else -1f
     }
+    private fun dimK(): Float = if (!flyMode) 1f else when (flyPhase) { 1 -> 0.35f; 2 -> 0.35f + 0.65f * landedFrac * landedFrac; else -> 1f }
 
     private fun updateTyping(now: Long) {
         if (now < nextAt) return
@@ -186,7 +207,7 @@ class CodeScene {
         if (playing) updateMouse(w, h, now)
         val curX = mx * w; val curY = my * h
         c.drawColor(Color.BLACK)
-        val lvl = 0.6f + 0.5f * bass
+        val lvl = (0.6f + 0.5f * bass) * dimK()
         val dt = if (lastNow == 0L) 0.033f else ((now - lastNow) / 1000f).coerceIn(0.01f, 0.1f)
         lastNow = now
         val pushR = w * 0.11f
@@ -233,6 +254,13 @@ class CodeScene {
         val maxC = ((w * 0.86f) / cw).toInt().coerceAtLeast(8)
         val top = h * 0.36f
         val glow = 8f + 14f * Math.max(0f, punch) + 6f * high
+        if (flyMode && flyPhase == 2) {
+            val b = 0.35f * landedFrac + (if (swp in 0f..1f) 0.7f * Math.sin(Math.PI * swp).toFloat() else 0f)
+            if (b > 0.01f) {
+                gpBloom.shader = android.graphics.RadialGradient(w / 2, top, w * 0.7f, Color.argb((90 * b).toInt(), 0, 255, 120), Color.argb(0, 0, 255, 120), android.graphics.Shader.TileMode.CLAMP)
+                c.drawRect(0f, 0f, w, h, gpBloom); gpBloom.shader = null
+            }
+        }
         // dim prompt line
         p.setShadowLayer(0f, 0f, 0f, 0)
         p.color = Color.argb(150, 0, 170, 80); p.textSize = ts * 0.62f
@@ -254,12 +282,19 @@ class CodeScene {
             bvx += -bx0 * 0.08f; bvy += -by0 * 0.08f; bvx *= 0.86f; bvy *= 0.86f; bx0 += bvx; by0 += bvy
             tp.setShadowLayer(glow, 0f, 0f, Color.argb(220, 0, 255, 110))
             tp.color = Color.rgb(60, 255, 140)
-            var fq = 1f; var rx0 = 0f; var ry0 = 0f; var ra = 0f
-            if (flyMode && flyPhase == 1) { val q = ((now - flyT0) / 420f).coerceIn(0f, 1f); val e = q * q * q; rx0 = rtlFly.first * e; ry0 = rtlFly.second * e; ra = rtlAng * e; fq = 1f - q }
-            else if (flyMode && flyPhase == 2) { val q = ((now - flyT0) / 1400f).coerceIn(0f, 1f); val e = 1f - (1f - q) * (1f - q) * (1f - q) * (1f - q); rx0 = rtlFly.first * (1f - e); ry0 = rtlFly.second * (1f - e); ra = rtlAng * (1f - e); fq = Math.min(1f, q * 4f) }
+            var fq = 1f; var rx0 = 0f; var ry0 = 0f; var ra = 0f; var rs = 1f; var gx = 0f
+            val tphr = (now - flyT0).toFloat()
+            if (flyMode && flyPhase == 1) { val q = (tphr / 620f).coerceIn(0f, 1f); val e = q * q; rx0 = rtlFly.first * e * 0.8f; ry0 = rtlFly.second * e * 0.8f; ra = rtlAng * e; rs = 1f + 0.6f * e; fq = 1f - q }
+            else if (flyMode && flyPhase == 2) {
+                val q = ((tphr - 250f) / 1500f).coerceIn(0f, 1f); val f = 1f - ease(q)
+                rx0 = rtlFly.first * f; ry0 = rtlFly.second * f - rtlFly.first * 0.25f * f; ra = rtlAng * f; rs = 1f + 1.4f * f; fq = Math.min(1f, q * 3f); gx = 30f * f
+                if (swp in 0f..1f) gx += 28f * Math.sin(Math.PI * swp).toFloat()
+                else if (q >= 1f) gx += 28f * (1f - ((tphr - 1750f) / 500f).coerceIn(0f, 1f))
+            }
             if (fq > 0.01f) {
                 tp.alpha = (255 * fq).toInt()
-                c.save(); c.translate(left + bx0 + rx0, top - ts * 0.9f + by0 + ry0); c.rotate(ra * 57f, lw / 2f, lay.height / 2f); lay.draw(c); c.restore()
+                tp.setShadowLayer(glow + gx, 0f, 0f, Color.argb((220 * fq).toInt(), 0, 255, 110))
+                c.save(); c.translate(left + bx0 + rx0, top - ts * 0.9f + by0 + ry0); c.scale(rs, rs, lw / 2f, lay.height / 2f); c.rotate(ra * 57f, lw / 2f, lay.height / 2f); lay.draw(c); c.restore()
                 tp.alpha = 255
             }
             blockBottom = top - ts * 0.9f + lay.height
@@ -289,19 +324,34 @@ class CodeScene {
             tox[i] += tvx[i]; toy[i] += tvy[i]
             p.setShadowLayer(glow, 0f, 0f, Color.argb(220, 0, 255, 110))
             p.color = Color.rgb(60, 255, 140)
-            var fx = 0f; var fy = 0f; var fa = 0f; var al = 1f
-            if (flyMode && flyPhase == 1) { val q = ((now - flyT0) / 420f).coerceIn(0f, 1f); val e = q * q * q; fx = sox[i] * e; fy = soy[i] * e; fa = sang[i] * e; al = 1f - q }
-            else if (flyMode && flyPhase == 2) {
-                val q = ((now - flyT0 - sdel[i]) / sdur[i]).coerceIn(0f, 1f)
-                val e = 1f - (1f - q) * (1f - q) * (1f - q) * (1f - q)
-                fx = sox[i] * (1f - e); fy = soy[i] * (1f - e); fa = sang[i] * (1f - e); al = Math.min(1f, q * 5f)
+            var al = 1f; var sc = 1f; var fa = 0f; var fx = 0f; var fy = 0f; var boost = 0f; var f2 = 0f
+            val tph = (now - flyT0).toFloat()
+            var q2 = 1f
+            if (flyMode && flyPhase == 1) {
+                val q = (tph / 620f).coerceIn(0f, 1f); val e = q * q
+                fx = sox[i] * e * 0.8f; fy = soy[i] * e * 0.8f; fa = sang[i] * e * 1.5f; sc = 1f + 0.8f * e; al = 1f - Math.pow(q.toDouble(), 0.8).toFloat()
+            } else if (flyMode && flyPhase == 2) {
+                q2 = ((tph - sdel[i]) / sdur[i]).coerceIn(0f, 1f)
+                chPose(i, q2); fx = pose[0]; fy = pose[1]; fa = pose[2]; sc = pose[3]; f2 = 1f - q2
+                al = Math.min(1f, q2 * 3f)
+                if (q2 >= 1f) boost = (1f - ((tph - sdel[i] - sdur[i]) / 500f).coerceIn(0f, 1f))
+                if (swp in 0f..1f) { val band = cw * 4f; val ctr = left + swp * (Math.min(n, maxC) * cw + 2 * band) - band; boost = Math.max(boost, Math.max(0f, 1f - Math.abs(bx - ctr) / band)) }
             }
             if (al <= 0.01f) continue
+            val gr = glow + 26f * boost + 18f * f2
+            if (flyMode && flyPhase == 2 && f2 > 0.06f) {
+                for (g in 3 downTo 1) {
+                    val qq = q2 - g * 0.04f; if (qq <= 0f) continue
+                    chPose(i, qq)
+                    p.color = Color.argb((255 * al * 0.22f / g).toInt(), 90, 220, 255); p.setShadowLayer(0f, 0f, 0f, 0)
+                    c.save(); c.translate(bx + tox[i] + pose[0] + cw / 2, by + toy[i] + pose[1] - ts * 0.3f); c.rotate(pose[2] * 20f); c.scale(pose[3], pose[3]); c.drawText(s, i, i + 1, -cw / 2, ts * 0.3f, p); c.restore()
+                }
+            }
+            p.color = Color.rgb((60 + 195 * boost).toInt(), 255, (140 + 115 * boost).toInt())
             p.alpha = (255 * al).toInt()
-            p.setShadowLayer(glow, 0f, 0f, Color.argb((220 * al).toInt(), 0, 255, 110))
-            if (fa != 0f) { c.save(); c.rotate(fa * 20f, bx + tox[i] + fx + cw / 2, by + toy[i] + fy - ts * 0.3f) }
-            c.drawText(s, i, i + 1, bx + tox[i] + fx, by + toy[i] + fy, p)
-            if (fa != 0f) c.restore()
+            p.setShadowLayer(gr, 0f, 0f, Color.argb((220 * al).toInt(), 0, 255, 110))
+            if (fa != 0f || sc != 1f) { c.save(); c.translate(bx + tox[i] + fx + cw / 2, by + toy[i] + fy - ts * 0.3f); c.rotate(fa * 20f); c.scale(sc, sc); c.drawText(s, i, i + 1, -cw / 2, ts * 0.3f, p); c.restore() }
+            else c.drawText(s, i, i + 1, bx + tox[i], by + toy[i], p)
             p.alpha = 255
         }
         for (i in n until 400) { tox[i] = 0f; toy[i] = 0f; tvx[i] = 0f; tvy[i] = 0f }
