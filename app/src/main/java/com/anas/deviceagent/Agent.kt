@@ -33,7 +33,7 @@ object Agent {
     }
 
     private const val SYSTEM = """You control an Android phone for the user. Reply with ONE JSON object only:
-{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|set_wallpaper_scene|set_wallpaper_fly|set_wallpaper_idle_black|set_wallpaper_skip|now_playing|done|fail", "path": "", "scene": "moon|code|image", "on": true, "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
+{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|set_wallpaper_scene|set_wallpaper_fly|set_wallpaper_idle_black|set_wallpaper_skip|now_playing|done|fail", "path": "", "scene": "moon|code|image|ring", "on": true, "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
 PREFER "shell": it runs invisibly in the background as the Android shell user (screen does not move). Put one command in "command" (no pipes, no redirects, no && or ;). Examples:
 - airplane mode: cmd connectivity airplane-mode enable|disable
 - Wi-Fi: svc wifi enable|disable   (if that fails: cmd wifi set-wifi-enabled enabled|disabled)
@@ -63,7 +63,7 @@ Live music wallpaper (moves with the beat): action "wallpaper_base" (optional "p
 Wallpaper style: when the user describes how the live wallpaper should look/animate (waves, particles, lights, flicker, shake, colours, intensity, where effects sit), use action "set_wallpaper_style" (the app reads the user's full message itself, you may leave "text" empty). "reset_wallpaper_style" returns to the default cinematic style. Do not use shell for this.
 Idle black: action "set_wallpaper_idle_black" with "on": true/false (when nothing is playing the wallpaper is plain black). Skip buttons: action "set_wallpaper_skip" with "on": true/false shows or hides the previous/next buttons on the code scene (play/pause stays).
 Flying letters: action "set_wallpaper_fly" with "on": true/false turns the code scene's flying-letters title effect on or off (letters fly in from all directions when the song changes).
-Wallpaper scenes: action "set_wallpaper_scene" with "scene": "moon" (dark calm night: glowing moon, a silhouette person on a chair who tips over on strong bass hits and gets back up, twinkling stars) "code" (pure black hacker terminal: the current song title typed like code, code rain, a roaming mouse pointer that pushes the characters) or "image" (the user's own base image with the style effects). Use it for "حط خلفية القمر" etc.
+Wallpaper scenes: action "set_wallpaper_scene" with "scene": "moon" (dark calm night: glowing moon, a silhouette person on a chair who tips over on strong bass hits and gets back up, twinkling stars) "code" (pure black hacker terminal: the current song title typed like code, code rain, a roaming mouse pointer that pushes the characters) "image" (the user's own base image with the style effects) or "ring" (black/charcoal/silver smoked-glass ring that rotates and pulses with the music, with the song title as a liquid glass thread under it; it is a separate live wallpaper, so it opens the wallpaper picker and the user taps set). Use it for "حط خلفية القمر" etc.
 Music: action "now_playing" returns the current track info (title/artist/state/app). Use it when the user mentions the current song.
 Actions: shell ("command"), script ("commands"), set_wallpaper, now_playing, done ("message" = short result for the user), fail ("message" = why).
 Rules: Never enter passwords or payment details, never send money or messages unless the goal says so. Answer "message" in the user's language. Be efficient, few steps."""
@@ -195,6 +195,12 @@ Rules: Never enter passwords or payment details, never send money or messages un
     private fun setWallpaperScene(j: JSONObject): String {
         val ctx = appCtx ?: return "error: no context"
         val sc = j.optString("scene").lowercase().trim()
+        if (sc.contains("ring") || sc.contains("حلق") || sc.contains("زجاج") || sc.contains("glass")) {
+            val intent = android.content.Intent(android.app.WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+                .putExtra(android.app.WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, android.content.ComponentName(ctx, RingWallpaper::class.java))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            return try { ctx.startActivity(intent); "ok: opened the wallpaper picker for the glass ring. Tell the user to tap set wallpaper; if it does not appear, tap the glass ring scene button in the Wallpaper tab." } catch (e: Exception) { "ok: could not open the picker from here. Tell the user to tap the glass ring scene button in the Wallpaper tab." }
+        }
         val v = if (sc.contains("moon") || sc.contains("قمر")) "moon" else if (sc.contains("code") || sc.contains("كود") || sc.contains("اكواد") || sc.contains("أكواد") || sc.contains("hacker") || sc.contains("terminal")) "code" else if (sc == "image" || sc.contains("صور")) "image" else return "error: scene must be moon or image"
         ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("wp_scene", v).apply()
         return "ok: wallpaper scene = $v. Lock and unlock the screen to see it. If the music wallpaper is not active yet, tell the user to activate it once from the Wallpaper tab."

@@ -230,7 +230,16 @@ class MainActivity : Activity() {
         }
         fun sceneBtn(label: String, v: String) = Button(this).apply {
             text = label
-            setOnClickListener { prefs.edit().putString("wp_scene", v).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
+            setOnClickListener {
+                prefs.edit().putString("wp_scene", v).apply()
+                val cur = try { WallpaperManager.getInstance(this@MainActivity).wallpaperInfo?.serviceInfo?.name } catch (e: Exception) { null }
+                if (cur != null && cur.endsWith("RingWallpaper")) pickLive(MusicWallpaper::class.java)
+                else Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show()
+            }
+        }
+        val ringBtn = Button(this).apply {
+            text = "مشهد: الحلقة الزجاجية"
+            setOnClickListener { pickLive(RingWallpaper::class.java) }
         }
         val wpPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -242,6 +251,7 @@ class MainActivity : Activity() {
                 addView(sceneBtn("مشهد: القمر 🌙", "moon"), LinearLayout.LayoutParams(0, -2, 1f))
                 addView(sceneBtn("مشهد: الأكواد", "code"), LinearLayout.LayoutParams(0, -2, 1f))
             })
+            addView(ringBtn)
             addView(android.widget.CheckBox(this@MainActivity).apply {
                 text = "خلفية سودا لما مفيش حاجة شغالة"
                 isChecked = prefs.getBoolean("wp_black_idle", true)
@@ -364,6 +374,15 @@ class MainActivity : Activity() {
     private fun append(line: String) {
         logView.append(line + "\n\n")
         scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun pickLive(c: Class<*>) {
+        try {
+            startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+                .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this, c)))
+        } catch (e: Exception) {
+            try { startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) } catch (e2: Exception) {}
+        }
     }
 
     private fun refresh() {

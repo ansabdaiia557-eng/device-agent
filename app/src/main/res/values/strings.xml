@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">Device Agent</string>
     <string name="wp_desc">Wallpaper that moves with the music you play</string>
+    <string name="wp_ring_name">Glass Ring</string>
     <string name="wp_name">Music Wallpaper</string>
 </resources>
