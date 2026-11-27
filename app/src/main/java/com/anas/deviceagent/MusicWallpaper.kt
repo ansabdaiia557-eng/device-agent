@@ -328,7 +328,7 @@ class MusicWallpaper : WallpaperService() {
                 val bimg = baseBmp
                 if (playing) updateBands(real, now)
                 val art = MusicState.artColor
-                if (scene == "code") { codeScene.draw(c, w, hh, playing, now, bass, punch, high, MusicState.songTitle, MusicState.songArtist, MusicState.position(), MusicState.durMs); return }
+                if (scene == "code") { codeScene.draw(c, w, hh, playing, now, bass, punch, high, MusicState.songTitle, MusicState.songArtist, MusicState.position(), MusicState.durMs, bands, mid); return }
                 if (scene == "moon") { drawMoon(c, w, hh, playing, now); return }
                 if (bimg == null) { drawClassic(c, w, hh, playing, real, art); return }
 
