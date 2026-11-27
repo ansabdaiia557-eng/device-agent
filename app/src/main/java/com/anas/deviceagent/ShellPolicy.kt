@@ -46,7 +46,7 @@ object ShellPolicy {
             "font_scale", "haptic_feedback_enabled", "sound_effects_enabled", "vibrate_when_ringing", "show_touches"),
         "global" to setOf("airplane_mode_on", "mobile_data", "wifi_on", "bluetooth_on", "zen_mode", "auto_time", "auto_time_zone",
             "animator_duration_scale", "window_animation_scale", "transition_animation_scale", "stay_on_while_plugged_in", "low_power"),
-        "secure" to setOf("location_mode", "ui_night_mode"))
+        "secure" to setOf("location_mode", "ui_night_mode", "lock_screen_show_notifications"))
     private val procOk = setOf("/proc/meminfo", "/proc/cpuinfo", "/proc/uptime", "/proc/loadavg", "/proc/version")
     private val fileReadHeads = setOf("ls", "cat", "stat", "du", "head", "tail", "wc")
     private val fileWriteHeads = setOf("cp", "mv", "mkdir", "touch")
