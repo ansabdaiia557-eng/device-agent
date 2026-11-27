@@ -268,6 +268,11 @@ class MainActivity : Activity() {
                 setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_lock_notifs", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
             })
             addView(android.widget.CheckBox(this@MainActivity).apply {
+                text = "تجريبي: إخفاء كارت الموسيقى بتاع النظام من شاشة القفل (يظهر كارت الخلفية بس)"
+                isChecked = prefs.getBoolean("wp_hide_stock_media", true)
+                setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_hide_stock_media", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وشغل موسيقى", Toast.LENGTH_SHORT).show() }
+            })
+            addView(android.widget.CheckBox(this@MainActivity).apply {
                 text = "حروف العنوان تطير وتتجمع (مشهد الأكواد)"
                 isChecked = prefs.getBoolean("wp_fly", true)
                 setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_fly", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
