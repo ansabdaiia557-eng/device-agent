@@ -72,27 +72,27 @@ class MusicWallpaper : WallpaperService() {
         private var lastMeta = 0L
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private var t = 0f
-        private var base: Bitmap? = null
+        private var baseBmp: Bitmap? = null
         private var baseW = 0
         private var baseH = 0
         private var pulse = 0f
 
         private fun loadBase(w: Int, h: Int) {
-            if (base != null && baseW == w && baseH == h) return
+            if (baseBmp != null && baseW == w && baseH == h) return
             try {
                 val f = java.io.File(filesDir, "wp_base.jpg")
-                if (!f.exists()) { base = null; return }
+                if (!f.exists()) { baseBmp = null; return }
                 val src = android.graphics.BitmapFactory.decodeFile(f.absolutePath) ?: return
                 val sc = Math.max(w.toFloat() / src.width, h.toFloat() / src.height) * 1.08f
                 val bw = (src.width * sc).toInt(); val bh = (src.height * sc).toInt()
-                base = Bitmap.createScaledBitmap(src, bw, bh, true); baseW = w; baseH = h
-            } catch (e: Throwable) { base = null }
+                baseBmp = Bitmap.createScaledBitmap(src, bw, bh, true); baseW = w; baseH = h
+            } catch (e: Throwable) { baseBmp = null }
         }
         private val tick = Runnable { step() }
 
         override fun onVisibilityChanged(v: Boolean) {
             visible = v
-            if (v) { base = null }
+            if (v) { baseBmp = null }
             h.removeCallbacks(tick)
             if (v) h.post(tick) else stopViz()
         }
@@ -186,7 +186,7 @@ class MusicWallpaper : WallpaperService() {
                 c.drawRect(0f, 0f, w, hh, paint)
                 paint.shader = null
                 loadBase(c.width, c.height)
-                val bimg = base
+                val bimg = baseBmp
                 if (bimg != null) {
                     var e = 0f
                     for (i in 0 until 32) e += if (real > 0f) bands[i] else (0.35f + 0.3f * Math.sin((t * 4f + i * 0.45f).toDouble()).toFloat())
