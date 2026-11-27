@@ -48,10 +48,6 @@ class MainActivity : Activity() {
         val base3 = field(prefs, "base3", "المزود 2 اختياري Base URL (https://openrouter.ai/api/v1)")
         val model3 = field(prefs, "model3", "Model")
         val key3 = field(prefs, "key3", "API key", true)
-        val hidden = CheckBox(this).apply {
-            text = "تشغيل واجهات التطبيقات على شاشة مخفية (تجريبي)"
-            isChecked = prefs.getBoolean("hidden", true)
-        }
         val saveBtn = Button(this).apply {
             text = "حفظ"
             setOnClickListener {
@@ -59,8 +55,7 @@ class MainActivity : Activity() {
                     .putString("base2", base2.text.toString().trim()).putString("model2", model2.text.toString().trim())
                     .putString("key2", key2.text.toString().trim())
                     .putString("base3", base3.text.toString().trim()).putString("model3", model3.text.toString().trim())
-                    .putString("key3", key3.text.toString().trim())
-                    .putBoolean("hidden", hidden.isChecked).apply()
+                    .putString("key3", key3.text.toString().trim()).apply()
                 Toast.makeText(this@MainActivity, "تم الحفظ", Toast.LENGTH_SHORT).show()
             }
         }
@@ -68,15 +63,11 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             visibility = if (prefs.getString("key2", "").isNullOrEmpty()) View.VISIBLE else View.GONE
             addView(base2); addView(model2); addView(key2); addView(base3); addView(model3); addView(key3)
-            addView(hidden); addView(saveBtn)
+            addView(saveBtn)
         }
         val toggle = Button(this).apply {
             text = "⚙️ إعدادات"
             setOnClickListener { panel.visibility = if (panel.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
-        }
-        val accBtn = Button(this).apply {
-            text = "خدمة الوصول"
-            setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         }
         val shzBtn = Button(this).apply {
             text = "ربط Shizuku"
@@ -92,7 +83,6 @@ class MainActivity : Activity() {
         val row1 = LinearLayout(this).apply {
             addView(toggle, LinearLayout.LayoutParams(0, -2, 1f))
             addView(shzBtn, LinearLayout.LayoutParams(0, -2, 1f))
-            addView(accBtn, LinearLayout.LayoutParams(0, -2, 1f))
         }
         logView = TextView(this).apply { textSize = 15f; textDirection = View.TEXT_DIRECTION_FIRST_STRONG }
         scroll = ScrollView(this).apply { addView(logView) }
@@ -159,13 +149,12 @@ class MainActivity : Activity() {
     }
 
     private fun refresh() {
-        val acc = if (AgentService.instance != null) "✅ خدمة الوصول" else "⚠️ خدمة الوصول مش مفعلة"
         val shz = when {
             Sh.granted() -> "✅ Shizuku"
             Sh.binderReady() -> "⚠️ Shizuku شغال بس مش مصرّح (دوس ربط Shizuku)"
-            else -> "⚠️ Shizuku مش شغال"
+            else -> "⚠️ شغّل Shizuku-Next الأول (بعد إعادة تشغيل الموبايل بيقف)"
         }
-        status.text = "$acc   |   $shz"
+        status.text = shz
         stopBtn.isEnabled = Agent.running
     }
 }
