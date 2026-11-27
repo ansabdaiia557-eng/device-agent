@@ -6,6 +6,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object Gemini {
+    @Volatile private var current: HttpURLConnection? = null
+    fun cancel() { try { current?.disconnect() } catch (e: Exception) {} }
+
     fun generate(apiKey: String, model: String, system: String, user: String): String {
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
@@ -16,14 +19,15 @@ object Gemini {
                 .put("responseMimeType", "application/json"))
         val conn = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
             .openConnection() as HttpURLConnection
+        current = conn
         conn.requestMethod = "POST"
         conn.connectTimeout = 20000
-        conn.readTimeout = 60000
+        conn.readTimeout = 45000
         conn.doOutput = true
         conn.setRequestProperty("Content-Type", "application/json")
         conn.setRequestProperty("x-goog-api-key", apiKey)
         conn.outputStream.use { it.write(body.toString().toByteArray()) }
-        val code = conn.responseCode
+        val code = try { conn.responseCode } finally { }
         val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
             ?.bufferedReader()?.use { it.readText() } ?: ""
         if (code !in 200..299) throw RuntimeException("Gemini HTTP $code: ${text.take(300)}")

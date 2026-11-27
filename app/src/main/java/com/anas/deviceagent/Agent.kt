@@ -17,7 +17,12 @@ object Agent {
         listener?.invoke(s)
     }
 
-    fun stop() { stop = true }
+    @Volatile private var thread: Thread? = null
+    fun stop() {
+        stop = true
+        Gemini.cancel()
+        thread?.interrupt()
+    }
 
     private const val SYSTEM = """You control an Android phone for the user through an accessibility service.
 Each turn you receive the user's goal, the steps done so far, and the current screen as a numbered list of UI elements.
@@ -45,21 +50,26 @@ Rules: use only indexes from the current screen. If the screen is not what you e
         if (key.isBlank()) { say("⚠️ حط مفتاح Gemini الأول من الإعدادات فوق"); return }
         if (svc0 == null) { say("⚠️ فعّل خدمة الوصول (Accessibility) الأول"); return }
         running = true; stop = false
-        say("🎯 $goal")
-        Thread {
+        say("🎯 $goal\n⏳ بفكر...")
+        val t = Thread {
             try { loop(goal, key, model) }
-            catch (e: Exception) {
+            catch (e: InterruptedException) { say("⏹ اتوقف") }
+            catch (e: Throwable) {
+                if (stop) { say("⏹ اتوقف"); return@Thread }
                 val m = e.message ?: ""
                 say(if (m.contains("HTTP 404")) "❌ اسم الموديل غلط أو مش متاح. غيّره من خانة الموديل فوق (جرب gemini-3.8-flash) واضغط حفظ.\n$m"
                 else if (m.contains("HTTP 400") && m.contains("API key")) "❌ مفتاح Gemini غلط. راجعه واضغط حفظ.\n$m"
                 else "❌ $m")
             }
-            finally { running = false; onFinished?.invoke() }
-        }.start()
+            finally { running = false; stop = false; thread = null; onFinished?.invoke() }
+        }
+        thread = t
+        t.start()
     }
 
     private fun loop(goal: String, key: String, model: String) {
         val history = ArrayList<String>()
+        var bad = 0
         for (step in 1..MAX_STEPS) {
             if (stop) { say("⏹ اتوقف"); return }
             val svc = AgentService.instance
@@ -70,7 +80,11 @@ Rules: use only indexes from the current screen. If the screen is not what you e
                 "\n\nCURRENT SCREEN:\n$screen"
             val raw = Gemini.generate(key, model, SYSTEM, prompt)
             val j = try { JSONObject(raw.trim().removePrefix("```json").removeSuffix("```").trim()) }
-            catch (e: Exception) { history.add("(model reply was not valid JSON)"); continue }
+            catch (e: Exception) {
+                bad++
+                if (bad >= 3) { say("❌ الموديل رجّع رد مش مفهوم 3 مرات، وقفت"); return }
+                history.add("(model reply was not valid JSON)"); continue
+            }
             val action = j.optString("action")
             val idx = if (j.has("index")) j.optInt("index", -1) else -1
             val text = j.optString("text")
