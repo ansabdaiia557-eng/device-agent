@@ -36,7 +36,7 @@ object ShellPolicy {
         "com.oplus", "com.coloros", "com.realme", "com.heytap", "com.qualcomm", "com.qti", "com.nearme", "com.oppo")
     private val cmdOk = setOf("connectivity", "bluetooth_manager", "media_session", "notification", "uimode", "location",
         "wifi", "vibrator_manager", "phone")
-    private val amOk = setOf("start", "start-activity", "startservice", "start-service", "broadcast", "force-stop")
+    private val amOk = setOf("start", "start-activity", "startservice", "start-service", "broadcast", "force-stop", "kill-all")
     private val pmRead = setOf("list", "path", "resolve-activity", "dump")
     private val keysOk = setOf("24", "25", "85", "86", "87", "88", "126", "127", "164", "26", "223", "224",
         "KEYCODE_SLEEP", "KEYCODE_WAKEUP", "KEYCODE_POWER", "KEYCODE_VOLUME_UP", "KEYCODE_VOLUME_DOWN", "KEYCODE_VOLUME_MUTE",
@@ -45,7 +45,7 @@ object ShellPolicy {
         "system" to setOf("screen_brightness", "screen_brightness_mode", "accelerometer_rotation", "user_rotation", "screen_off_timeout",
             "font_scale", "haptic_feedback_enabled", "sound_effects_enabled", "vibrate_when_ringing", "show_touches"),
         "global" to setOf("airplane_mode_on", "mobile_data", "wifi_on", "bluetooth_on", "zen_mode", "auto_time", "auto_time_zone",
-            "animator_duration_scale", "window_animation_scale", "transition_animation_scale", "stay_on_while_plugged_in", "low_power"),
+            "animator_duration_scale", "fixed_performance_mode_enabled", "window_animation_scale", "transition_animation_scale", "stay_on_while_plugged_in", "low_power"),
         "secure" to setOf("location_mode", "ui_night_mode", "lock_screen_show_notifications"))
     private val procOk = setOf("/proc/meminfo", "/proc/cpuinfo", "/proc/uptime", "/proc/loadavg", "/proc/version")
     private val fileReadHeads = setOf("ls", "cat", "stat", "du", "head", "tail", "wc")
@@ -79,7 +79,7 @@ object ShellPolicy {
             "svc", "dumpsys", "getprop", "monkey", "uptime", "date", "id", "whoami", "df" -> V.Ok
             "ps" -> V.Ok
             "top" -> if (args.contains("-n") && args.contains("-b")) V.Ok else no("top: use top -b -n 1")
-            "cmd" -> if (sub in cmdOk) V.Ok else no("cmd: service not allowed ($sub)")
+            "cmd" -> if (sub in cmdOk) V.Ok else if (sub == "power" && args.getOrNull(2) == "set-fixed-performance-mode-enabled" && args.size == 4 && (args[3] == "true" || args[3] == "false")) V.Ok else no("cmd: service not allowed ($sub)")
             "am" -> if (sub in amOk) V.Ok else no("am: subcommand not allowed ($sub)")
             "pm" -> when {
                 sub in pmRead -> V.Ok
