@@ -530,6 +530,14 @@ class RingWallpaper : WallpaperService() {
 
         private var wasPlaying = false; private var idleSince = 0L; private var playSince = 0L
 
+        override fun onCreate(sh: SurfaceHolder) {
+            super.onCreate(sh)
+            try {
+                val dm = resources.displayMetrics
+                sh.setFixedSize((dm.widthPixels * 0.65f).toInt(), (dm.heightPixels * 0.65f).toInt())
+            } catch (e: Throwable) {}
+        }
+
         private fun step() {
             if (!visible) return
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -543,7 +551,7 @@ class RingWallpaper : WallpaperService() {
                 bass = 0f; mid = 0f; high = 0f
                 if (now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@RingWallpaper) }
                 render(false, false, now)
-                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 16L else 1000L) else 66L)
+                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 33L else 1000L) else 100L)
                 return
             }
             startViz()
@@ -552,7 +560,7 @@ class RingWallpaper : WallpaperService() {
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else "simple"
             render(true, vizLive, now)
-            h.postDelayed(tick, 16)
+            h.postDelayed(tick, 33)
         }
 
         private var ovBmp: Bitmap? = null
