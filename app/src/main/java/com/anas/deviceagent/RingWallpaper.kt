@@ -408,7 +408,7 @@ class RingWallpaper : WallpaperService() {
             visible = v
             h.removeCallbacks(tick)
             if (v) {
-                blackIdle = getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean("wp_black_idle", true)
+                blackIdle = false
                 failed = false
                 h.post(tick)
             } else { stopViz(); releaseGl() }
@@ -494,7 +494,7 @@ class RingWallpaper : WallpaperService() {
                 bass = 0f; mid = 0f; high = 0f
                 if (now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@RingWallpaper) }
                 render(false, false, now)
-                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 16L else 1000L) else 66L)
+                h.postDelayed(tick, 33L)
                 return
             }
             startViz()
@@ -519,7 +519,7 @@ class RingWallpaper : WallpaperService() {
                     gl = ng; g = ng; shown = ""; want = ""; form = 0f
                 }
                 if (!playing && blackIdle && (idleSince == 0L || now - idleSince >= 1600L)) { g.black(); return }
-                val fade = if (!playing && blackIdle) 1f - (now - idleSince) / 1600f else if (playing && playSince > 0L && now - playSince < 1000L) (now - playSince) / 1000f else 1f
+                val fade = 1f
                 val dt = if (lastNow == 0L) 0.033f else ((now - lastNow) / 1000f).coerceIn(0.004f, 0.1f)
                 lastNow = now
                 if (playing) { simT += dt; updateBands(real, now) } else { punch *= 0.9f }
