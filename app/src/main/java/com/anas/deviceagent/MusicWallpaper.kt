@@ -29,6 +29,31 @@ object MusicState {
     @Volatile var songTitle = ""
     @Volatile var songArtist = ""
     @Volatile var listenerOk = true
+    @Volatile var durMs = 0L
+    @Volatile var posMs = 0L
+    @Volatile var posAt = 0L          // elapsedRealtime when posMs was read
+    @Volatile var speed = 1f
+    @Volatile var isPlaying = false
+    @Volatile var ctrl: MediaController? = null
+
+    fun position(): Long {
+        val p = if (isPlaying) posMs + ((android.os.SystemClock.elapsedRealtime() - posAt) * speed).toLong() else posMs
+        return if (durMs > 0) p.coerceIn(0L, durMs) else Math.max(0L, p)
+    }
+
+    /** 0 = previous, 1 = play/pause, 2 = next */
+    fun control(which: Int) {
+        val c = ctrl ?: return
+        try {
+            val t = c.transportControls
+            when (which) {
+                0 -> t.skipToPrevious()
+                2 -> t.skipToNext()
+                else -> if (isPlaying) t.pause() else t.play()
+            }
+            if (which == 1) { isPlaying = !isPlaying; posAt = android.os.SystemClock.elapsedRealtime() }
+        } catch (e: Throwable) {}
+    }
     @Volatile var art: Bitmap? = null
     @Volatile var artColor = Color.rgb(110, 70, 220)
 
@@ -38,7 +63,14 @@ object MusicState {
             val list: List<MediaController> = msm.getActiveSessions(ComponentName(ctx, MediaListener::class.java))
             listenerOk = true
             val c = list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: list.firstOrNull() ?: return
+            ctrl = c
+            c.playbackState?.let { ps ->
+                posMs = ps.position; posAt = ps.lastPositionUpdateTime.takeIf { it > 0 } ?: android.os.SystemClock.elapsedRealtime()
+                speed = if (ps.playbackSpeed == 0f) 1f else ps.playbackSpeed
+                isPlaying = ps.state == PlaybackState.STATE_PLAYING
+            }
             val md = c.metadata ?: return
+            durMs = md.getLong(MediaMetadata.METADATA_KEY_DURATION)
             songTitle = md.getString(MediaMetadata.METADATA_KEY_TITLE) ?: ""
             songArtist = md.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
             title = songTitle + " " + songArtist
@@ -138,6 +170,33 @@ class MusicWallpaper : WallpaperService() {
             } catch (e: Throwable) { baseBmp = null }
         }
 
+        private var lastTap = 0L
+        override fun onCreate(sh: SurfaceHolder) {
+            super.onCreate(sh)
+            setTouchEventsEnabled(true)
+        }
+
+        private fun tap(x: Float, y: Float) {
+            if (scene != "code") return
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastTap < 350) return
+            val b = codeScene.hit(x, y)
+            if (b < 0) return
+            lastTap = now
+            codeScene.flash(b, System.currentTimeMillis())
+            MusicState.control(b)
+            h.removeCallbacks(tick); h.post(tick)
+        }
+
+        override fun onTouchEvent(e: android.view.MotionEvent) {
+            if (e.action == android.view.MotionEvent.ACTION_UP) tap(e.x, e.y)
+        }
+
+        override fun onCommand(action: String?, x: Int, y: Int, z: Int, extras: android.os.Bundle?, resultRequested: Boolean): android.os.Bundle? {
+            if (action == "android.wallpaper.tap") tap(x.toFloat(), y.toFloat())
+            return null
+        }
+
         override fun onVisibilityChanged(v: Boolean) {
             visible = v
             h.removeCallbacks(tick)
@@ -207,8 +266,9 @@ class MusicWallpaper : WallpaperService() {
                 stopViz()
                 MusicState.mode = "idle"
                 bass = 0f; mid = 0f; high = 0f; rings.clear()
+                if (scene == "code" && now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@MusicWallpaper) }
                 draw(false, false, now)
-                h.postDelayed(tick, if (scene == "code" && codeScene.busy) 50L else 1000L)
+                h.postDelayed(tick, if (scene == "code" && (codeScene.busy || codeScene.flashing(now))) 50L else 1000L)
                 return
             }
             startViz()
@@ -268,7 +328,7 @@ class MusicWallpaper : WallpaperService() {
                 val bimg = baseBmp
                 if (playing) updateBands(real, now)
                 val art = MusicState.artColor
-                if (scene == "code") { codeScene.draw(c, w, hh, playing, now, bass, punch, high, MusicState.songTitle, MusicState.songArtist); return }
+                if (scene == "code") { codeScene.draw(c, w, hh, playing, now, bass, punch, high, MusicState.songTitle, MusicState.songArtist, MusicState.position(), MusicState.durMs); return }
                 if (scene == "moon") { drawMoon(c, w, hh, playing, now); return }
                 if (bimg == null) { drawClassic(c, w, hh, playing, real, art); return }
 

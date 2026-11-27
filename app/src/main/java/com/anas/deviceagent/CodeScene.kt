@@ -4,7 +4,12 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextDirectionHeuristics
+import android.text.TextPaint
 
 /** Black "hacker terminal" scene: typed track title, layered code rain, and a roaming mouse that pushes characters. */
 class CodeScene {
@@ -41,6 +46,21 @@ class CodeScene {
     private var ripple = -1L
     private var rx = 0f; private var ry = 0f
     private var blinkT = 0
+
+    // player UI
+    private val btn = arrayOf(RectF(), RectF(), RectF())
+    private var flashIdx = -1; private var flashAt = 0L
+    private val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.MONOSPACE }
+    private var rtl = false
+    private var bx0 = 0f; private var by0 = 0f; private var bvx = 0f; private var bvy = 0f
+    fun hit(x: Float, y: Float): Int {
+        for (i in 0 until 3) { val r = btn[i]; if (x >= r.left - 18f && x <= r.right + 18f && y >= r.top - 18f && y <= r.bottom + 18f) return i }
+        return -1
+    }
+    fun flash(i: Int, now: Long) { flashIdx = i; flashAt = now }
+    fun flashing(now: Long) = flashIdx >= 0 && now - flashAt < 450
+    private fun isRtlChar(ch: Char) = ch.code in 0x0590..0x08FF || ch.code in 0xFB1D..0xFEFF
+    private fun mmss(ms: Long): String { val s = (ms / 1000).toInt(); return String.format("%02d:%02d", s / 60, s % 60) }
 
     private fun build(w: Float, h: Float) {
         sizeW = w
@@ -110,7 +130,7 @@ class CodeScene {
             typoPending = false
         } else {
             val c = target[s.length]
-            if (c.isLetter() && rnd.nextFloat() < 0.035f && s.length > 6) {
+            if (c.isLetter() && c.code < 0x250 && !rtl && rnd.nextFloat() < 0.035f && s.length > 6) {
                 shown.append(('a' + rnd.nextInt(26)))
                 typoPending = true
                 nextAt = now + 220 + rnd.nextInt(200)           // notices the mistake, then backspaces
@@ -124,9 +144,11 @@ class CodeScene {
         }
     }
 
-    fun draw(c: Canvas, w: Float, h: Float, playing: Boolean, now: Long, bass: Float, punch: Float, high: Float, title: String, artist: String) {
+    fun draw(c: Canvas, w: Float, h: Float, playing: Boolean, now: Long, bass: Float, punch: Float, high: Float, title: String, artist: String, posMs: Long, durMs: Long) {
         if (sizeW != w) { build(w, h); mx = 0.5f; my = 0.6f }
-        val wantT = if (title.isBlank() && artist.isBlank()) "// waiting for a track..." else "const track = \"" + (title.trim() + (if (artist.isNotBlank()) " - " + artist.trim() else "")) + "\";"
+        val both = title.trim() + (if (artist.isNotBlank()) " - " + artist.trim() else "")
+        rtl = both.any { isRtlChar(it) }
+        val wantT = if (title.isBlank() && artist.isBlank()) "// waiting for a track..." else if (rtl) both else "const track = \"" + both + "\";"
         if (wantT != target) { target = wantT; nextAt = Math.min(nextAt, now + 150) }
         if (shown.isEmpty() && nextAt == 0L) nextAt = now + 400
         updateTyping(now)
@@ -187,6 +209,33 @@ class CodeScene {
         p.textSize = ts
         val s = shown.toString()
         val n = Math.min(s.length, 399)
+        var blockBottom = top
+        if (rtl) {
+            tp.textSize = ts * 1.05f
+            // one soft block for shaped RTL text: pushed as a whole, springs back
+            val lw = (w * 0.86f).toInt()
+            val lay = StaticLayout.Builder.obtain(s, 0, s.length, tp, lw)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL).setTextDirection(TextDirectionHeuristics.ANYRTL_LTR)
+                .setLineSpacing(0f, 1.25f).build()
+            val cx0 = left + lw / 2f + bx0; val cy0 = top + lay.height / 2f + by0
+            val ddx = cx0 - curX; val ddy = cy0 - curY; val dd = Math.hypot(ddx.toDouble(), ddy.toDouble()).toFloat()
+            if (playing && dd < pushR * 1.8f && dd > 1f) { val f = 1f - dd / (pushR * 1.8f); bvx += ddx / dd * f * 0.5f + cvx * 0.04f * f; bvy += ddy / dd * f * 0.5f + cvy * 0.04f * f }
+            bvx += -bx0 * 0.08f; bvy += -by0 * 0.08f; bvx *= 0.86f; bvy *= 0.86f; bx0 += bvx; by0 += bvy
+            tp.setShadowLayer(glow, 0f, 0f, Color.argb(220, 0, 255, 110))
+            tp.color = Color.rgb(60, 255, 140)
+            c.save(); c.translate(left + bx0, top - ts * 0.9f + by0); lay.draw(c); c.restore()
+            blockBottom = top - ts * 0.9f + lay.height
+            blinkT = ((now / 530L) % 2L).toInt()
+            if (busy || blinkT == 0) {
+                val line = lay.getLineForOffset(s.length)
+                val ex = lay.getPrimaryHorizontal(s.length)
+                val ly = top - ts * 0.9f + lay.getLineTop(line) + by0
+                p.setShadowLayer(glow, 0f, 0f, Color.argb(220, 0, 255, 110)); p.color = Color.argb(230, 60, 255, 140)
+                val xx = left + ex + bx0
+                c.drawRect(xx - cw * 0.5f, ly + ts * 0.05f, xx + cw * 0.5f, ly + ts * 1.2f, p)
+            }
+            tp.setShadowLayer(0f, 0f, 0f, 0)
+        } else {
         for (i in 0 until n) {
             val col = i % maxC; val row = i / maxC
             val bx = left + col * cw; val by = top + row * ts * 1.45f
@@ -205,15 +254,19 @@ class CodeScene {
             c.drawText(s, i, i + 1, bx + tox[i], by + toy[i], p)
         }
         for (i in n until 400) { tox[i] = 0f; toy[i] = 0f; tvx[i] = 0f; tvy[i] = 0f }
-        // blinking block cursor at the end of the text
         val endCol = n % maxC; val endRow = n / maxC
+        blockBottom = top + endRow * ts * 1.45f + ts * 0.3f
         blinkT = ((now / 530L) % 2L).toInt()
         if (busy || blinkT == 0) {
             p.setShadowLayer(glow, 0f, 0f, Color.argb(220, 0, 255, 110))
             p.color = Color.argb(230, 60, 255, 140)
             c.drawRect(left + endCol * cw + 2f, top + endRow * ts * 1.45f - ts * 0.9f, left + endCol * cw + cw - 2f, top + endRow * ts * 1.45f + ts * 0.18f, p)
         }
+        }
         p.setShadowLayer(0f, 0f, 0f, 0)
+
+        // ---- player: progress + prev / play / next
+        drawPlayer(c, w, h, now, posMs, durMs, playing, punch, high, Math.max(blockBottom + ts * 1.2f, h * 0.55f))
 
         // ---- mouse pointer
         if (ripple > 0 && now - ripple < 500) {
@@ -233,5 +286,65 @@ class CodeScene {
         p.setShadowLayer(0f, 0f, 0f, 0)
         p.style = Paint.Style.STROKE; p.strokeWidth = 1.5f; p.color = Color.BLACK; c.drawPath(path, p)
         p.style = Paint.Style.FILL
+    }
+
+    private fun drawPlayer(c: Canvas, w: Float, h: Float, now: Long, pos: Long, dur: Long, playing: Boolean, punch: Float, high: Float, y0: Float) {
+        val left = w * 0.07f; val right = w * 0.93f
+        val gl = 6f + 10f * Math.max(0f, punch)
+        p.textSize = w * 0.032f
+        p.setShadowLayer(0f, 0f, 0f, 0)
+        p.color = Color.argb(190, 0, 200, 90)
+        val ts = if (dur > 0) mmss(pos) else "--:--"
+        val te = if (dur > 0) mmss(dur) else "--:--"
+        c.drawText("t=" + ts, left, y0, p)
+        val ew = p.measureText("max=" + te)
+        c.drawText("max=" + te, right - ew, y0, p)
+        val by = y0 + w * 0.045f
+        val frac = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else ((now % 3000L) / 3000f)
+        // track made of ticks
+        val ticks = 48
+        val tw = (right - left) / ticks
+        val filled = (frac * ticks)
+        for (i in 0 until ticks) {
+            val on = i + 1 <= filled
+            val hgt = w * (if (i % 4 == 0) 0.020f else 0.013f)
+            p.color = if (on) Color.rgb(60, 255, 140) else Color.argb(90, 0, 160, 80)
+            if (on) p.setShadowLayer(gl, 0f, 0f, Color.argb(200, 0, 255, 110)) else p.setShadowLayer(0f, 0f, 0f, 0)
+            c.drawRect(left + i * tw + tw * 0.2f, by - hgt / 2, left + i * tw + tw * 0.75f, by + hgt / 2, p)
+        }
+        // playhead
+        val kx = left + frac * (right - left)
+        p.setShadowLayer(gl + 4f, 0f, 0f, Color.argb(230, 0, 255, 110)); p.color = Color.WHITE
+        c.drawRect(kx - 3f, by - w * 0.03f, kx + 3f, by + w * 0.03f, p)
+        p.setShadowLayer(0f, 0f, 0f, 0)
+
+        // buttons
+        val bw = w * 0.2f; val bh = w * 0.13f; val gap = w * 0.06f
+        val total = bw * 3 + gap * 2
+        val bx = (w - total) / 2; val byy = by + w * 0.09f
+        for (i in 0 until 3) {
+            val r = btn[i]
+            r.set(bx + i * (bw + gap), byy, bx + i * (bw + gap) + bw, byy + bh)
+            val fl = if (i == flashIdx) (1f - (now - flashAt) / 450f).coerceIn(0f, 1f) else 0f
+            if (fl > 0f) { p.color = Color.argb((fl * 150).toInt(), 60, 255, 140); p.setShadowLayer(18f * fl, 0f, 0f, Color.argb((fl * 255).toInt(), 0, 255, 110)); c.drawRoundRect(r, 8f, 8f, p) }
+            p.setShadowLayer(gl, 0f, 0f, Color.argb(200, 0, 255, 110))
+            p.style = Paint.Style.STROKE; p.strokeWidth = 2.5f
+            p.color = Color.argb(230, 60, 255, 140)
+            c.drawRoundRect(r, 8f, 8f, p)
+            // corner brackets feel
+            p.style = Paint.Style.FILL
+            p.color = if (fl > 0.3f) Color.BLACK else Color.rgb(60, 255, 140)
+            val cx = r.centerX(); val cy = r.centerY(); val u = bh * 0.22f
+            val path = Path()
+            when (i) {
+                0 -> { path.moveTo(cx + u * 1.6f, cy - u * 1.4f); path.lineTo(cx - u * 0.2f, cy); path.lineTo(cx + u * 1.6f, cy + u * 1.4f); path.close()
+                       c.drawPath(path, p); c.drawRect(cx - u * 1.9f, cy - u * 1.4f, cx - u * 1.3f, cy + u * 1.4f, p) }
+                2 -> { path.moveTo(cx - u * 1.6f, cy - u * 1.4f); path.lineTo(cx + u * 0.2f, cy); path.lineTo(cx - u * 1.6f, cy + u * 1.4f); path.close()
+                       c.drawPath(path, p); c.drawRect(cx + u * 1.3f, cy - u * 1.4f, cx + u * 1.9f, cy + u * 1.4f, p) }
+                else -> if (MusicState.isPlaying) { c.drawRect(cx - u * 1.1f, cy - u * 1.4f, cx - u * 0.35f, cy + u * 1.4f, p); c.drawRect(cx + u * 0.35f, cy - u * 1.4f, cx + u * 1.1f, cy + u * 1.4f, p) }
+                        else { path.moveTo(cx - u * 0.9f, cy - u * 1.5f); path.lineTo(cx + u * 1.5f, cy); path.lineTo(cx - u * 0.9f, cy + u * 1.5f); path.close(); c.drawPath(path, p) }
+            }
+        }
+        p.setShadowLayer(0f, 0f, 0f, 0)
     }
 }
