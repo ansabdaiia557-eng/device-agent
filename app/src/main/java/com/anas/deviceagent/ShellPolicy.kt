@@ -79,7 +79,9 @@ object ShellPolicy {
             "svc", "dumpsys", "getprop", "monkey", "uptime", "date", "id", "whoami", "df" -> V.Ok
             "ps" -> V.Ok
             "top" -> if (args.contains("-n") && args.contains("-b")) V.Ok else no("top: use top -b -n 1")
-            "cmd" -> if (sub in cmdOk) V.Ok else if (sub == "power" && args.getOrNull(2) == "set-fixed-performance-mode-enabled" && args.size == 4 && (args[3] == "true" || args[3] == "false")) V.Ok else no("cmd: service not allowed ($sub)")
+            "cmd" -> if (sub in cmdOk) V.Ok else if (sub == "appops" && args.size == 6 && args[2] == "set" && args[4].uppercase() == "POST_NOTIFICATION" && args[5] in setOf("allow", "ignore", "default")) {
+                    if (protectedPkgPrefixes.any { args[3].lowercase().startsWith(it) } || !args[3].contains('.')) no("appops: system or invalid package ${args[3]}") else V.Ok
+                } else if (sub == "appops" && args.getOrNull(2) == "get" && args.size >= 4) V.Ok else if (sub == "power" && args.getOrNull(2) == "set-fixed-performance-mode-enabled" && args.size == 4 && (args[3] == "true" || args[3] == "false")) V.Ok else no("cmd: service not allowed ($sub)")
             "am" -> if (sub in amOk) V.Ok else no("am: subcommand not allowed ($sub)")
             "pm" -> when {
                 sub in pmRead -> V.Ok
