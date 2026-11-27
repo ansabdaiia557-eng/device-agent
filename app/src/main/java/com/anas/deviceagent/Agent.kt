@@ -17,10 +17,16 @@ object Agent {
         listener?.invoke(s)
     }
 
+    private class Fallback(val base: String, val model: String, val key: String) {
+        fun usable() = base.isNotBlank() && model.isNotBlank() && key.isNotBlank()
+    }
+    @Volatile private var fallback = Fallback("", "", "")
+    @Volatile private var useFallback = false
     @Volatile private var thread: Thread? = null
     fun stop() {
         stop = true
         Gemini.cancel()
+        OpenAiCompat.cancel()
         thread?.interrupt()
     }
 
@@ -46,10 +52,14 @@ Rules: use only indexes from the current screen. If the screen is not what you e
         val svc0 = AgentService.instance
         val prefs = ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE)
         val key = prefs.getString("key", "") ?: ""
+        fallback = Fallback(
+            prefs.getString("base2", "")?.trim() ?: "",
+            prefs.getString("model2", "")?.trim() ?: "",
+            prefs.getString("key2", "")?.trim() ?: "")
         val model = (prefs.getString("model", "gemini-3.8-flash") ?: "gemini-3.8-flash").let { if (it == "gemini-2.5-flash") "gemini-3.8-flash" else it }
         if (key.isBlank()) { say("⚠️ حط مفتاح Gemini الأول من الإعدادات فوق"); return }
         if (svc0 == null) { say("⚠️ فعّل خدمة الوصول (Accessibility) الأول"); return }
-        running = true; stop = false
+        running = true; stop = false; useFallback = false
         say("🎯 $goal\n⏳ بفكر...")
         val t = Thread {
             try { loop(goal, key, model) }
@@ -67,21 +77,41 @@ Rules: use only indexes from the current screen. If the screen is not what you e
         t.start()
     }
 
+    private fun isTemp(e: Exception): Boolean {
+        val m = e.message ?: ""
+        return m.contains("HTTP 503") || m.contains("HTTP 429") || m.contains("HTTP 500") ||
+            e is java.net.SocketTimeoutException || e is java.net.UnknownHostException ||
+            e is java.net.ConnectException || m.contains("timeout", true)
+    }
+
     private fun generateWithRetry(key: String, model: String, prompt: String): String {
         var attempt = 0
         while (true) {
+            val usingFallback = useFallback
             try {
-                return Gemini.generate(key, model, SYSTEM, prompt)
+                return if (usingFallback)
+                    OpenAiCompat.generate(fallback.base, fallback.key, fallback.model, SYSTEM, prompt)
+                else Gemini.generate(key, model, SYSTEM, prompt)
             } catch (e: Exception) {
                 if (stop) throw e
-                val m = e.message ?: ""
-                val temp = m.contains("HTTP 503") || m.contains("HTTP 429") || m.contains("HTTP 500") ||
-                    e is java.net.SocketTimeoutException || e is java.net.UnknownHostException ||
-                    e is java.net.ConnectException || m.contains("timeout", true)
                 attempt++
-                if (!temp || attempt > 5) throw e
+                if (!isTemp(e)) {
+                    if (!usingFallback && fallback.usable()) {
+                        say("🔀 Gemini فيه مشكلة، بحوّل للمزود التاني (${fallback.model})")
+                        useFallback = true; attempt = 0; continue
+                    }
+                    throw e
+                }
+                val limit = if (!usingFallback && fallback.usable()) 2 else 5
+                if (attempt >= limit) {
+                    if (!usingFallback && fallback.usable()) {
+                        say("🔀 Gemini مشغول، حوّلت للمزود التاني (${fallback.model})")
+                        useFallback = true; attempt = 0; continue
+                    }
+                    throw e
+                }
                 val wait = 2L shl (attempt - 1)
-                say("🔁 جوجل مشغول شوية، هحاول تاني بعد ${wait} ث ($attempt/5)")
+                say("🔁 ${if (usingFallback) "المزود التاني" else "جوجل"} مشغول شوية، هحاول تاني بعد ${wait} ث ($attempt/$limit)")
                 Thread.sleep(wait * 1000)
             }
         }
@@ -99,7 +129,7 @@ Rules: use only indexes from the current screen. If the screen is not what you e
                 (if (history.isEmpty()) "(none)" else history.joinToString("\n")) +
                 "\n\nCURRENT SCREEN:\n$screen"
             val raw = generateWithRetry(key, model, prompt)
-            val j = try { JSONObject(raw.trim().removePrefix("```json").removeSuffix("```").trim()) }
+            val j = try { JSONObject(raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1)) }
             catch (e: Exception) {
                 bad++
                 if (bad >= 3) { say("❌ الموديل رجّع رد مش مفهوم 3 مرات، وقفت"); return }

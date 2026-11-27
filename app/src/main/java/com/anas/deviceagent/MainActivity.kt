@@ -25,6 +25,7 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(32), dp(12), dp(12))
+            isFocusableInTouchMode = true
         }
         status = TextView(this).apply { textSize = 13f }
         val keyEt = EditText(this).apply {
@@ -38,11 +39,27 @@ class MainActivity : Activity() {
             setText((prefs.getString("model", "gemini-3.8-flash") ?: "gemini-3.8-flash").let { if (it == "gemini-2.5-flash") "gemini-3.8-flash" else it })
             setSingleLine()
         }
+        val baseEt = EditText(this).apply {
+            hint = "مزود تاني (اختياري): Base URL مثل https://api.groq.com/openai/v1"
+            setText(prefs.getString("base2", "")); setSingleLine()
+        }
+        val model2Et = EditText(this).apply {
+            hint = "موديل المزود التاني"
+            setText(prefs.getString("model2", "")); setSingleLine()
+        }
+        val key2Et = EditText(this).apply {
+            hint = "مفتاح المزود التاني"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(prefs.getString("key2", "")); setSingleLine()
+        }
         val saveBtn = Button(this).apply {
             text = "حفظ"
             setOnClickListener {
                 prefs.edit().putString("key", keyEt.text.toString().trim())
-                    .putString("model", modelEt.text.toString().trim().ifEmpty { "gemini-3.8-flash" }).apply()
+                    .putString("model", modelEt.text.toString().trim().ifEmpty { "gemini-3.8-flash" })
+                    .putString("base2", baseEt.text.toString().trim())
+                    .putString("model2", model2Et.text.toString().trim())
+                    .putString("key2", key2Et.text.toString().trim()).apply()
                 Toast.makeText(this@MainActivity, "تم الحفظ", Toast.LENGTH_SHORT).show()
             }
         }
@@ -81,7 +98,8 @@ class MainActivity : Activity() {
             addView(sendBtn); addView(stopBtn)
         }
         root.addView(status)
-        root.addView(keyEt); root.addView(modelEt); root.addView(row1)
+        root.addView(keyEt); root.addView(modelEt)
+        root.addView(baseEt); root.addView(model2Et); root.addView(key2Et); root.addView(row1)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(row2)
         setContentView(root)
