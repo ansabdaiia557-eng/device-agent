@@ -5,9 +5,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.graphics.Bitmap
-import android.graphics.LinearGradient
-import android.graphics.Shader
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
@@ -30,12 +27,19 @@ class CodeScene {
     private val layerAlpha = floatArrayOf(0.35f, 0.6f, 0.9f)
     private var lastNow = 0L
 
+    // flying-letters title mode
+    @Volatile var flyMode = true
+    private var flyPhase = 0                  // 0 settled, 1 old letters leave, 2 new letters arrive
+    private var flyT0 = 0L
+    private val sox = FloatArray(400); private val soy = FloatArray(400); private val sang = FloatArray(400)
+    private val sdel = FloatArray(400); private val sdur = FloatArray(400)
+    private var rtlFly = Pair(0f, 0f); private var rtlAng = 0f
     // typing
     private var shown = StringBuilder()
     private var target = ""
     private var nextAt = 0L
     private var typoPending = false
-    val busy: Boolean get() = shown.toString() != target
+    val busy: Boolean get() = shown.toString() != target || flyPhase != 0
     private val tox = FloatArray(400); private val toy = FloatArray(400); private val tvx = FloatArray(400); private val tvy = FloatArray(400)
 
     // mouse
@@ -49,51 +53,6 @@ class CodeScene {
     private var ripple = -1L
     private var rx = 0f; private var ry = 0f
     private var blinkT = 0
-
-    // glass backdrop buffers
-    private var off: Bitmap? = null; private var offC: Canvas? = null
-    private var mid: Bitmap? = null; private var midC: Canvas? = null
-    private var small: Bitmap? = null; private var smallC: Canvas? = null
-    private val filt = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-    private var pulseV = 0f
-    private val eq = FloatArray(28)
-    private var lastPunch = 0f
-    private var kick = false
-    private val gp = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val gpath = Path()
-    private var cardBottomY = 0f
-    private var cardKey = ""; private var cardH = 0
-
-    private fun glass(c: Canvas, r0: RectF, rad: Float, pulse: Float, w: Float, h: Float, alphaBoost: Int = 0) {
-        val pp = pulse.coerceIn(0f, 1.2f)
-        val r = RectF(r0); r.inset(-pp * 4f, -pp * 3f)
-        val sm = small
-        gp.style = Paint.Style.FILL
-        gp.color = Color.argb(60, 0, 0, 0)
-        gp.setShadowLayer(16f + 22f * pp, 0f, 6f, Color.argb(90 + (130 * pp).toInt(), 0, 255, 130))
-        c.drawRoundRect(r, rad, rad, gp)
-        gp.setShadowLayer(0f, 0f, 0f, 0)
-        c.save()
-        gpath.reset(); gpath.addRoundRect(r, rad, rad, Path.Direction.CW)
-        c.clipPath(gpath)
-        if (sm != null) c.drawBitmap(sm, null, RectF(0f, 0f, w, h), filt)
-        gp.color = Color.argb(34 + alphaBoost + (40 * pp).toInt(), 235, 255, 245)
-        c.drawRect(r, gp)
-        gp.shader = LinearGradient(0f, r.top, 0f, r.top + r.height() * 0.55f, Color.argb(95 + (60 * pp).toInt(), 255, 255, 255), Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP)
-        c.drawRect(r.left, r.top, r.right, r.top + r.height() * 0.55f, gp)
-        gp.shader = LinearGradient(0f, r.bottom - r.height() * 0.3f, 0f, r.bottom, Color.argb(0, 120, 255, 190), Color.argb(50, 120, 255, 190), Shader.TileMode.CLAMP)
-        c.drawRect(r.left, r.bottom - r.height() * 0.3f, r.right, r.bottom, gp)
-        gp.shader = null
-        c.restore()
-        gp.style = Paint.Style.STROKE; gp.strokeWidth = 2.4f
-        gp.shader = LinearGradient(r.left, r.top, r.right, r.bottom, intArrayOf(Color.argb(240, 255, 255, 255), Color.argb(50, 180, 255, 220), Color.argb(140 + (80 * pp).toInt(), 60, 255, 150), Color.argb(190, 255, 255, 255)), floatArrayOf(0f, 0.4f, 0.75f, 1f), Shader.TileMode.CLAMP)
-        c.drawRoundRect(r, rad, rad, gp)
-        gp.shader = null
-        gp.strokeWidth = 1f; gp.color = Color.argb(60 + (110 * pp).toInt(), 60, 255, 150)
-        val ri = RectF(r); ri.inset(3.5f, 3.5f)
-        c.drawRoundRect(ri, Math.max(1f, rad - 3.5f), Math.max(1f, rad - 3.5f), gp)
-        gp.style = Paint.Style.FILL
-    }
 
     // player UI
     private val btn = arrayOf(RectF(), RectF(), RectF())
@@ -166,6 +125,29 @@ class CodeScene {
         cvx = mx * w - ox; cvy = my * h - oy
     }
 
+    private fun scatter(n: Int, w: Float, h: Float) {
+        for (i in 0 until Math.min(n, 400)) {
+            val a = rnd.nextFloat() * 6.2832f
+            val r = Math.max(w, h) * (0.7f + rnd.nextFloat() * 0.6f)
+            sox[i] = Math.cos(a.toDouble()).toFloat() * r; soy[i] = Math.sin(a.toDouble()).toFloat() * r
+            sang[i] = (rnd.nextFloat() - 0.5f) * 14f
+            sdel[i] = rnd.nextFloat() * 520f + i * 8f
+            sdur[i] = 750f + rnd.nextFloat() * 650f
+        }
+        val a = rnd.nextFloat() * 6.2832f
+        rtlFly = Pair(Math.cos(a.toDouble()).toFloat() * w, Math.sin(a.toDouble()).toFloat() * h * 0.6f); rtlAng = (rnd.nextFloat() - 0.5f) * 0.5f
+    }
+
+    private fun updateFly(now: Long, w: Float, h: Float) {
+        val s = shown.toString()
+        if (flyPhase == 0 && s != target) {
+            if (s.isEmpty() || s.startsWith("//")) { shown.setLength(0); shown.append(target); scatter(target.length, w, h); flyPhase = 2; flyT0 = now }
+            else { scatter(s.length, w, h); flyPhase = 1; flyT0 = now }
+        } else if (flyPhase == 1 && now - flyT0 > 420) {
+            shown.setLength(0); shown.append(target); scatter(target.length, w, h); flyPhase = 2; flyT0 = now
+        } else if (flyPhase == 2 && now - flyT0 > 520 + target.length * 8 + 1450) flyPhase = 0
+    }
+
     private fun updateTyping(now: Long) {
         if (now < nextAt) return
         val s = shown.toString()
@@ -192,22 +174,14 @@ class CodeScene {
         }
     }
 
-    fun draw(c0: Canvas, w: Float, h: Float, playing: Boolean, now: Long, bass: Float, punch: Float, high: Float, title: String, artist: String, posMs: Long, durMs: Long, bands: FloatArray, midLvl: Float) {
-        val cv = c0
-        val wi = w.toInt(); val hi = h.toInt()
-        if (off == null || off!!.width != wi || off!!.height != hi) {
-            off = Bitmap.createBitmap(wi, hi, Bitmap.Config.ARGB_8888); offC = Canvas(off!!)
-            mid = Bitmap.createBitmap(wi / 4, hi / 4, Bitmap.Config.ARGB_8888); midC = Canvas(mid!!)
-            small = Bitmap.createBitmap(Math.max(8, wi / 14), Math.max(8, hi / 14), Bitmap.Config.ARGB_8888); smallC = Canvas(small!!)
-        }
-        var c: Canvas = offC!!
+    fun draw(c: Canvas, w: Float, h: Float, playing: Boolean, now: Long, bass: Float, punch: Float, high: Float, title: String, artist: String, posMs: Long, durMs: Long) {
         if (sizeW != w) { build(w, h); mx = 0.5f; my = 0.6f }
         val both = title.trim() + (if (artist.isNotBlank()) " - " + artist.trim() else "")
         rtl = both.any { isRtlChar(it) }
         val wantT = if (title.isBlank() && artist.isBlank()) "// waiting for a track..." else if (rtl) both else "const track = \"" + both + "\";"
         if (wantT != target) { target = wantT; nextAt = Math.min(nextAt, now + 150) }
         if (shown.isEmpty() && nextAt == 0L) nextAt = now + 400
-        updateTyping(now)
+        if (flyMode) updateFly(now, w, h) else updateTyping(now)
         if (playing) updateMouse(w, h, now)
         val curX = mx * w; val curY = my * h
         c.drawColor(Color.BLACK)
@@ -225,7 +199,7 @@ class CodeScene {
             if (playing) {
                 col.head += col.speed * dt * (1f + 0.9f * bass)
                 if (col.head - col.len * lineH > h) { col.head = -rnd.nextFloat() * h * 0.4f; col.speed = layerSpeed[col.layer] * (w / 1080f) * (0.7f + rnd.nextFloat() * 0.6f) }
-                if (rnd.nextFloat() < 0.08f + 0.25f * high) col.ch[rnd.nextInt(col.len)] = glyphs[rnd.nextInt(glyphs.size)]
+                if (rnd.nextFloat() < 0.12f) col.ch[rnd.nextInt(col.len)] = glyphs[rnd.nextInt(glyphs.size)]
             }
             for (i in 0 until col.len) {
                 val bx = col.x; val by = col.head - i * lineH
@@ -250,20 +224,6 @@ class CodeScene {
             }
         }
 
-        // ---- commit rain, build blurred backdrop for the glass
-        cv.drawBitmap(off!!, 0f, 0f, null)
-        midC!!.drawBitmap(off!!, null, RectF(0f, 0f, mid!!.width.toFloat(), mid!!.height.toFloat()), filt)
-        smallC!!.drawBitmap(mid!!, null, RectF(0f, 0f, small!!.width.toFloat(), small!!.height.toFloat()), filt)
-        c = cv
-        kick = punch > 0.35f && lastPunch <= 0.35f; lastPunch = punch
-        var any = 0f; for (b in bands) any += b
-        for (i in 0 until 28) {
-            val tgt = if (!playing) 0.02f else if (any > 0.05f) Math.min(1f, bands[Math.min(31, i * 32 / 28)] * 2.6f + 0.03f)
-                else (bass + (high - bass) * i / 27f + midLvl * 0.3f) * (0.55f + 0.45f * Math.sin(now / 130.0 + i * 0.9).toFloat()) + 0.03f
-            eq[i] += (tgt.coerceIn(0f, 1f) - eq[i]) * (if (tgt > eq[i]) 0.6f else 0.18f)
-        }
-        pulseV = Math.max(Math.max(0f, punch), pulseV * 0.9f)
-
         // ---- title block
         val ts = w * 0.047f
         p.textSize = ts
@@ -272,22 +232,6 @@ class CodeScene {
         val maxC = ((w * 0.86f) / cw).toInt().coerceAtLeast(8)
         val top = h * 0.36f
         val glow = 8f + 14f * Math.max(0f, punch) + 6f * high
-        // glass card behind the title
-        run {
-            val rows = Math.max(1, (target.length + maxC - 1) / maxC)
-            val cardTop = top - ts * 2.4f
-            var cardBottom = top + (rows - 1) * ts * 1.45f + ts * 0.75f
-            if (rtl) {
-                if (cardKey != target) {
-                    tp.textSize = ts * 1.05f
-                    cardH = StaticLayout.Builder.obtain(target, 0, target.length, tp, (w * 0.86f).toInt()).setAlignment(Layout.Alignment.ALIGN_NORMAL).setTextDirection(TextDirectionHeuristics.ANYRTL_LTR).setLineSpacing(0f, 1.25f).build().height
-                    cardKey = target
-                }
-                cardBottom = top - ts * 0.9f + cardH + ts * 0.5f
-            }
-            cardBottomY = cardBottom
-            glass(c, RectF(w * 0.035f, cardTop, w * 0.965f, cardBottom), ts * 1.1f, punch, w, h)
-        }
         // dim prompt line
         p.setShadowLayer(0f, 0f, 0f, 0)
         p.color = Color.argb(150, 0, 170, 80); p.textSize = ts * 0.62f
@@ -306,14 +250,20 @@ class CodeScene {
             val cx0 = left + lw / 2f + bx0; val cy0 = top + lay.height / 2f + by0
             val ddx = cx0 - curX; val ddy = cy0 - curY; val dd = Math.hypot(ddx.toDouble(), ddy.toDouble()).toFloat()
             if (playing && dd < pushR * 1.8f && dd > 1f) { val f = 1f - dd / (pushR * 1.8f); bvx += ddx / dd * f * 0.5f + cvx * 0.04f * f; bvy += ddy / dd * f * 0.5f + cvy * 0.04f * f }
-            if (kick) bvy -= 3.5f
             bvx += -bx0 * 0.08f; bvy += -by0 * 0.08f; bvx *= 0.86f; bvy *= 0.86f; bx0 += bvx; by0 += bvy
             tp.setShadowLayer(glow, 0f, 0f, Color.argb(220, 0, 255, 110))
             tp.color = Color.rgb(60, 255, 140)
-            c.save(); c.translate(left + bx0, top - ts * 0.9f + by0); lay.draw(c); c.restore()
+            var fq = 1f; var rx0 = 0f; var ry0 = 0f; var ra = 0f
+            if (flyMode && flyPhase == 1) { val q = ((now - flyT0) / 420f).coerceIn(0f, 1f); val e = q * q * q; rx0 = rtlFly.first * e; ry0 = rtlFly.second * e; ra = rtlAng * e; fq = 1f - q }
+            else if (flyMode && flyPhase == 2) { val q = ((now - flyT0) / 1400f).coerceIn(0f, 1f); val e = 1f - (1f - q) * (1f - q) * (1f - q) * (1f - q); rx0 = rtlFly.first * (1f - e); ry0 = rtlFly.second * (1f - e); ra = rtlAng * (1f - e); fq = Math.min(1f, q * 4f) }
+            if (fq > 0.01f) {
+                tp.alpha = (255 * fq).toInt()
+                c.save(); c.translate(left + bx0 + rx0, top - ts * 0.9f + by0 + ry0); c.rotate(ra * 57f, lw / 2f, lay.height / 2f); lay.draw(c); c.restore()
+                tp.alpha = 255
+            }
             blockBottom = top - ts * 0.9f + lay.height
             blinkT = ((now / 530L) % 2L).toInt()
-            if (busy || blinkT == 0) {
+            if ((!flyMode && busy) || blinkT == 0) {
                 val line = lay.getLineForOffset(s.length)
                 val ex = lay.getPrimaryHorizontal(s.length)
                 val ly = top - ts * 0.9f + lay.getLineTop(line) + by0
@@ -333,19 +283,31 @@ class CodeScene {
                 tvx[i] += dx / d * f * (0.8f + 0.08f * speed) + cvx * 0.15f * f
                 tvy[i] += dy / d * f * (0.8f + 0.08f * speed) + cvy * 0.15f * f
             }
-            if (kick) tvy[i] -= 2.5f + rnd.nextFloat() * 3.5f
             tvx[i] += -tox[i] * 0.06f; tvy[i] += -toy[i] * 0.06f
             tvx[i] *= 0.88f; tvy[i] *= 0.88f
             tox[i] += tvx[i]; toy[i] += tvy[i]
             p.setShadowLayer(glow, 0f, 0f, Color.argb(220, 0, 255, 110))
             p.color = Color.rgb(60, 255, 140)
-            c.drawText(s, i, i + 1, bx + tox[i], by + toy[i], p)
+            var fx = 0f; var fy = 0f; var fa = 0f; var al = 1f
+            if (flyMode && flyPhase == 1) { val q = ((now - flyT0) / 420f).coerceIn(0f, 1f); val e = q * q * q; fx = sox[i] * e; fy = soy[i] * e; fa = sang[i] * e; al = 1f - q }
+            else if (flyMode && flyPhase == 2) {
+                val q = ((now - flyT0 - sdel[i]) / sdur[i]).coerceIn(0f, 1f)
+                val e = 1f - (1f - q) * (1f - q) * (1f - q) * (1f - q)
+                fx = sox[i] * (1f - e); fy = soy[i] * (1f - e); fa = sang[i] * (1f - e); al = Math.min(1f, q * 5f)
+            }
+            if (al <= 0.01f) continue
+            p.alpha = (255 * al).toInt()
+            p.setShadowLayer(glow, 0f, 0f, Color.argb((220 * al).toInt(), 0, 255, 110))
+            if (fa != 0f) { c.save(); c.rotate(fa * 20f, bx + tox[i] + fx + cw / 2, by + toy[i] + fy - ts * 0.3f) }
+            c.drawText(s, i, i + 1, bx + tox[i] + fx, by + toy[i] + fy, p)
+            if (fa != 0f) c.restore()
+            p.alpha = 255
         }
         for (i in n until 400) { tox[i] = 0f; toy[i] = 0f; tvx[i] = 0f; tvy[i] = 0f }
         val endCol = n % maxC; val endRow = n / maxC
         blockBottom = top + endRow * ts * 1.45f + ts * 0.3f
         blinkT = ((now / 530L) % 2L).toInt()
-        if (busy || blinkT == 0) {
+        if ((!flyMode && busy) || blinkT == 0) {
             p.setShadowLayer(glow, 0f, 0f, Color.argb(220, 0, 255, 110))
             p.color = Color.argb(230, 60, 255, 140)
             c.drawRect(left + endCol * cw + 2f, top + endRow * ts * 1.45f - ts * 0.9f, left + endCol * cw + cw - 2f, top + endRow * ts * 1.45f + ts * 0.18f, p)
@@ -354,7 +316,7 @@ class CodeScene {
         p.setShadowLayer(0f, 0f, 0f, 0)
 
         // ---- player: progress + prev / play / next
-        drawPlayer(c, w, h, now, posMs, durMs, playing, punch, high, cardBottomY + ts * 2.2f)
+        drawPlayer(c, w, h, now, posMs, durMs, playing, punch, high, Math.max(blockBottom + ts * 1.2f, h * 0.55f))
 
         // ---- mouse pointer
         if (ripple > 0 && now - ripple < 500) {
@@ -388,7 +350,6 @@ class CodeScene {
         val ew = p.measureText("max=" + te)
         c.drawText("max=" + te, right - ew, y0, p)
         val by = y0 + w * 0.045f
-        glass(c, RectF(left - w * 0.03f, y0 - w * 0.065f, right + w * 0.03f, by + w * 0.055f), w * 0.05f, punch, w, h)
         val frac = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else ((now % 3000L) / 3000f)
         // track made of ticks
         val ticks = 48
@@ -396,7 +357,7 @@ class CodeScene {
         val filled = (frac * ticks)
         for (i in 0 until ticks) {
             val on = i + 1 <= filled
-            val hgt = w * (if (i % 4 == 0) 0.020f else 0.013f) * (if (on) 1f + 0.9f * eq[i * 28 / 48] else 1f)
+            val hgt = w * (if (i % 4 == 0) 0.020f else 0.013f)
             p.color = if (on) Color.rgb(60, 255, 140) else Color.argb(90, 0, 160, 80)
             if (on) p.setShadowLayer(gl, 0f, 0f, Color.argb(200, 0, 255, 110)) else p.setShadowLayer(0f, 0f, 0f, 0)
             c.drawRect(left + i * tw + tw * 0.2f, by - hgt / 2, left + i * tw + tw * 0.75f, by + hgt / 2, p)
@@ -415,12 +376,14 @@ class CodeScene {
             val r = btn[i]
             r.set(bx + i * (bw + gap), byy, bx + i * (bw + gap) + bw, byy + bh)
             val fl = if (i == flashIdx) (1f - (now - flashAt) / 450f).coerceIn(0f, 1f) else 0f
-            
-            glass(c, r, bh / 2f, punch, w, h, (fl * 90).toInt())
-            p.setShadowLayer(0f, 0f, 0f, 0)
+            if (fl > 0f) { p.color = Color.argb((fl * 150).toInt(), 60, 255, 140); p.setShadowLayer(18f * fl, 0f, 0f, Color.argb((fl * 255).toInt(), 0, 255, 110)); c.drawRoundRect(r, 8f, 8f, p) }
+            p.setShadowLayer(gl, 0f, 0f, Color.argb(200, 0, 255, 110))
+            p.style = Paint.Style.STROKE; p.strokeWidth = 2.5f
+            p.color = Color.argb(230, 60, 255, 140)
+            c.drawRoundRect(r, 8f, 8f, p)
             // corner brackets feel
             p.style = Paint.Style.FILL
-            p.color = Color.rgb(235, 255, 245); p.setShadowLayer(8f + 10f * Math.max(0f, punch), 0f, 0f, Color.argb(200, 60, 255, 150))
+            p.color = if (fl > 0.3f) Color.BLACK else Color.rgb(60, 255, 140)
             val cx = r.centerX(); val cy = r.centerY(); val u = bh * 0.22f
             val path = Path()
             when (i) {
@@ -431,19 +394,6 @@ class CodeScene {
                 else -> if (MusicState.isPlaying) { c.drawRect(cx - u * 1.1f, cy - u * 1.4f, cx - u * 0.35f, cy + u * 1.4f, p); c.drawRect(cx + u * 0.35f, cy - u * 1.4f, cx + u * 1.1f, cy + u * 1.4f, p) }
                         else { path.moveTo(cx - u * 0.9f, cy - u * 1.5f); path.lineTo(cx + u * 1.5f, cy); path.lineTo(cx - u * 0.9f, cy + u * 1.5f); path.close(); c.drawPath(path, p) }
             }
-        }
-        // spectrum strip: the song's frequencies, in glass
-        val ey = byy + bh + w * 0.05f; val eh = w * 0.17f
-        glass(c, RectF(left - w * 0.03f, ey, right + w * 0.03f, ey + eh), w * 0.05f, punch, w, h)
-        val n = eq.size; val aw = (right - left) / n
-        for (i in 0 until n) {
-            val bhh = (eh * 0.78f * eq[i]).coerceAtLeast(4f)
-            val x0 = left + i * aw + aw * 0.18f; val x1 = left + (i + 1) * aw - aw * 0.18f
-            val yb = ey + eh * 0.89f
-            p.shader = LinearGradient(0f, yb - bhh, 0f, yb, Color.argb(255, 235, 255, 245), Color.argb(230, 40, 230, 120), Shader.TileMode.CLAMP)
-            p.setShadowLayer(6f + 10f * eq[i], 0f, 0f, Color.argb(200, 60, 255, 150))
-            c.drawRoundRect(RectF(x0, yb - bhh, x1, yb), aw * 0.3f, aw * 0.3f, p)
-            p.shader = null
         }
         p.setShadowLayer(0f, 0f, 0f, 0)
     }

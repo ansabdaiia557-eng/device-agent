@@ -33,7 +33,7 @@ object Agent {
     }
 
     private const val SYSTEM = """You control an Android phone for the user. Reply with ONE JSON object only:
-{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|set_wallpaper_scene|now_playing|done|fail", "path": "", "scene": "moon|code|image", "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
+{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|set_wallpaper_scene|set_wallpaper_fly|now_playing|done|fail", "path": "", "scene": "moon|code|image", "on": true, "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
 PREFER "shell": it runs invisibly in the background as the Android shell user (screen does not move). Put one command in "command" (no pipes, no redirects, no && or ;). Examples:
 - airplane mode: cmd connectivity airplane-mode enable|disable
 - Wi-Fi: svc wifi enable|disable   (if that fails: cmd wifi set-wifi-enabled enabled|disabled)
@@ -61,6 +61,7 @@ Images: if the goal contains ATTACHED IMAGE, it was already analysed for you (de
 Wallpaper: action "set_wallpaper" changes the real wallpaper invisibly. Optional "path" (a /sdcard image; default = the attached image), "which" home|lock|both, "dim" 0-0.8, "blur" 0-1, "tint" hex colour, "caption" short text drawn at the bottom (e.g. song title). Pick dim/blur/tint/caption to match what the user asked, e.g. tint to match the song mood.
 Live music wallpaper (moves with the beat): action "wallpaper_base" (optional "path", default = attached image) makes the image the base of the live wallpaper app. Use it when the user wants a wallpaper that moves/reacts to music. "set_wallpaper" is the static one.
 Wallpaper style: when the user describes how the live wallpaper should look/animate (waves, particles, lights, flicker, shake, colours, intensity, where effects sit), use action "set_wallpaper_style" (the app reads the user's full message itself, you may leave "text" empty). "reset_wallpaper_style" returns to the default cinematic style. Do not use shell for this.
+Flying letters: action "set_wallpaper_fly" with "on": true/false turns the code scene's flying-letters title effect on or off (letters fly in from all directions when the song changes).
 Wallpaper scenes: action "set_wallpaper_scene" with "scene": "moon" (dark calm night: glowing moon, a silhouette person on a chair who tips over on strong bass hits and gets back up, twinkling stars) "code" (pure black hacker terminal: the current song title typed like code, code rain, a roaming mouse pointer that pushes the characters) or "image" (the user's own base image with the style effects). Use it for "حط خلفية القمر" etc.
 Music: action "now_playing" returns the current track info (title/artist/state/app). Use it when the user mentions the current song.
 Actions: shell ("command"), script ("commands"), set_wallpaper, now_playing, done ("message" = short result for the user), fail ("message" = why).
@@ -264,7 +265,7 @@ Rules: Never enter passwords or payment details, never send money or messages un
             if (stop) { say("⏹ اتوقف"); return }
             if (action == "done") { say("✅ " + j.optString("message", "تم")); return }
             if (action == "fail") { say("🛑 " + j.optString("message", "مقدرتش")); return }
-            if (action != "shell" && action != "script" && action != "set_wallpaper" && action != "now_playing" && action != "wallpaper_base" && action != "set_wallpaper_style" && action != "reset_wallpaper_style" && action != "set_wallpaper_scene") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
+            if (action != "shell" && action != "script" && action != "set_wallpaper" && action != "now_playing" && action != "wallpaper_base" && action != "set_wallpaper_style" && action != "reset_wallpaper_style" && action != "set_wallpaper_scene" && action != "set_wallpaper_fly") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
             val result: String
             val desc: String
             if (action == "script") {
@@ -286,6 +287,10 @@ Rules: Never enter passwords or payment details, never send money or messages un
                 result = wallpaperBase(j); desc = "wallpaper_base"
             } else if (action == "set_wallpaper_style") {
                 result = setWallpaperStyle(j); desc = "set_wallpaper_style"
+            } else if (action == "set_wallpaper_fly") {
+                val on = j.optBoolean("on", true)
+                appCtx?.getSharedPreferences("prefs", Context.MODE_PRIVATE)?.edit()?.putBoolean("wp_fly", on)?.apply()
+                result = "ok: flying letters ${if (on) "ON" else "OFF"}. Lock and unlock the screen to apply."; desc = "set_wallpaper_fly"
             } else if (action == "set_wallpaper_scene") {
                 result = setWallpaperScene(j); desc = "set_wallpaper_scene"
             } else if (action == "reset_wallpaper_style") {

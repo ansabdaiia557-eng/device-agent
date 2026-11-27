@@ -242,6 +242,11 @@ class MainActivity : Activity() {
                 addView(sceneBtn("مشهد: القمر 🌙", "moon"), LinearLayout.LayoutParams(0, -2, 1f))
                 addView(sceneBtn("مشهد: الأكواد", "code"), LinearLayout.LayoutParams(0, -2, 1f))
             })
+            addView(android.widget.CheckBox(this@MainActivity).apply {
+                text = "حروف العنوان تطير وتتجمع (مشهد الأكواد)"
+                isChecked = prefs.getBoolean("wp_fly", true)
+                setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_fly", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
+            })
             addView(slider("مكان الموجات والأضواء: أفقي (الراديو)", (st0.ax * 100).toInt(), 100) { s, v -> s.ax = v })
             addView(slider("مكان الموجات والأضواء: رأسي (الراديو)", (st0.ay * 100).toInt(), 100) { s, v -> s.ay = v })
             addView(slider("شدة التأثير", ((st0.intensity - 0.3f) / 1.3f * 100).toInt(), 100) { s, v -> s.intensity = 0.3f + v * 1.3f })

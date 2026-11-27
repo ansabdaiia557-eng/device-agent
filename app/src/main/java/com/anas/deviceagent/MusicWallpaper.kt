@@ -149,6 +149,7 @@ class MusicWallpaper : WallpaperService() {
         private fun loadSettings() {
             S = WStyle.load(getSharedPreferences("prefs", Context.MODE_PRIVATE))
             scene = getSharedPreferences("prefs", Context.MODE_PRIVATE).getString("wp_scene", "image") ?: "image"
+            codeScene.flyMode = getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean("wp_fly", true)
             if (stars[0] == 0f) { val r = java.util.Random(11); for (i in 0 until 90) { stars[i * 4] = r.nextFloat(); stars[i * 4 + 1] = r.nextFloat() * 0.75f; stars[i * 4 + 2] = r.nextFloat() * 6.28f; stars[i * 4 + 3] = 0.4f + r.nextFloat() } }
             ax = S.ax; ay = S.ay; inten = S.intensity
             while (dust.size < S.particleCount) dust.add(Dust(rnd.nextFloat() - 0.5f, rnd.nextFloat() - 0.5f, 0.3f + rnd.nextFloat(), rnd.nextFloat() * 6.28f))
@@ -328,7 +329,7 @@ class MusicWallpaper : WallpaperService() {
                 val bimg = baseBmp
                 if (playing) updateBands(real, now)
                 val art = MusicState.artColor
-                if (scene == "code") { codeScene.draw(c, w, hh, playing, now, bass, punch, high, MusicState.songTitle, MusicState.songArtist, MusicState.position(), MusicState.durMs, bands, mid); return }
+                if (scene == "code") { codeScene.draw(c, w, hh, playing, now, bass, punch, high, MusicState.songTitle, MusicState.songArtist, MusicState.position(), MusicState.durMs); return }
                 if (scene == "moon") { drawMoon(c, w, hh, playing, now); return }
                 if (bimg == null) { drawClassic(c, w, hh, playing, real, art); return }
 
