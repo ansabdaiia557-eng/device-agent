@@ -33,7 +33,7 @@ object Agent {
     }
 
     private const val SYSTEM = """You control an Android phone for the user. Reply with ONE JSON object only:
-{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|set_wallpaper_scene|set_wallpaper_fly|set_wallpaper_idle_black|set_wallpaper_skip|set_wallpaper_lock_notifs|now_playing|done|fail", "path": "", "scene": "moon|code|image|ring", "on": true, "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
+{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|set_wallpaper_scene|set_wallpaper_fly|set_wallpaper_idle_black|set_wallpaper_skip|set_wallpaper_lock_notifs|now_playing|list_apps|done|fail", "filter": "", "path": "", "scene": "moon|code|image|ring", "on": true, "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
 PREFER "shell": it runs invisibly in the background as the Android shell user (screen does not move). Put one command in "command" (no pipes, no redirects, no && or ;). Examples:
 - airplane mode: cmd connectivity airplane-mode enable|disable
 - Wi-Fi: svc wifi enable|disable   (if that fails: cmd wifi set-wifi-enabled enabled|disabled)
@@ -65,6 +65,7 @@ Idle black: action "set_wallpaper_idle_black" with "on": true/false (when nothin
 Flying letters: action "set_wallpaper_fly" with "on": true/false turns the code scene's flying-letters title effect on or off (letters fly in from all directions when the song changes).
 Wallpaper scenes: action "set_wallpaper_scene" with "scene": "moon" (dark calm night: glowing moon, a silhouette person on a chair who tips over on strong bass hits and gets back up, twinkling stars) "code" (pure black hacker terminal: the current song title typed like code, code rain, a roaming mouse pointer that pushes the characters) "image" (the user's own base image with the style effects) or "ring" (black/charcoal/silver smoked-glass ring that rotates and pulses with the music, with the song title as a liquid glass thread under it; it is a separate live wallpaper, so it opens the wallpaper picker and the user taps set). Use it for "حط خلفية القمر" etc.
 Music: action "now_playing" returns the current track info (title/artist/state/app). Use it when the user mentions the current song.
+Installed apps: action "list_apps" with optional "filter" (app name or package part, Arabic or English) lists "App name → package.id" lines. Use it when the user asks for installed apps or a package name.
 Actions: shell ("command"), script ("commands"), set_wallpaper, now_playing, done ("message" = short result for the user), fail ("message" = why).
 Rules: Never enter passwords or payment details, never send money or messages unless the goal says so. Answer "message" in the user's language. Be efficient, few steps."""
 
@@ -212,6 +213,22 @@ Rules: Never enter passwords or payment details, never send money or messages un
         return "ok: wallpaper style reset to the default cinematic style"
     }
 
+    private fun listApps(filter: String): String {
+        val c = appCtx ?: return "error: no context"
+        val pm = c.packageManager
+        val f = filter.trim().lowercase()
+        val rows = ArrayList<Pair<String, String>>()
+        for (a in pm.getInstalledApplications(0)) {
+            val user = (a.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 || (a.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            val label = try { pm.getApplicationLabel(a).toString() } catch (e: Throwable) { a.packageName }
+            if (f.isEmpty()) { if (user) rows.add(label to a.packageName) }
+            else if (label.lowercase().contains(f) || a.packageName.lowercase().contains(f)) rows.add(label to a.packageName)
+        }
+        rows.sortBy { it.first.lowercase() }
+        if (rows.isEmpty()) return "no apps match '$filter'"
+        return rows.take(150).joinToString("\n") { it.first + " → " + it.second } + (if (rows.size > 150) "\n... ${rows.size} total, use a filter" else "")
+    }
+
     private fun nowPlaying(): String {
         if (!Sh.granted()) return "error: Shizuku not ready"
         val raw = try { Sh.exec(listOf("dumpsys", "media_session"), 15, 60000) } catch (e: Throwable) { return "error: ${e.message}" }
@@ -272,7 +289,7 @@ Rules: Never enter passwords or payment details, never send money or messages un
             if (stop) { say("⏹ اتوقف"); return }
             if (action == "done") { say("✅ " + j.optString("message", "تم")); return }
             if (action == "fail") { say("🛑 " + j.optString("message", "مقدرتش")); return }
-            if (action != "shell" && action != "script" && action != "set_wallpaper" && action != "now_playing" && action != "wallpaper_base" && action != "set_wallpaper_style" && action != "reset_wallpaper_style" && action != "set_wallpaper_scene" && action != "set_wallpaper_fly" && action != "set_wallpaper_idle_black" && action != "set_wallpaper_skip" && action != "set_wallpaper_lock_notifs") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
+            if (action != "shell" && action != "script" && action != "set_wallpaper" && action != "now_playing" && action != "list_apps" && action != "wallpaper_base" && action != "set_wallpaper_style" && action != "reset_wallpaper_style" && action != "set_wallpaper_scene" && action != "set_wallpaper_fly" && action != "set_wallpaper_idle_black" && action != "set_wallpaper_skip" && action != "set_wallpaper_lock_notifs") { history.add("$step. $action → not possible: only shell commands exist. Use shell or answer fail"); say("🚫 مش قادر أعمل ده من غير الشاشة"); continue }
             val result: String
             val desc: String
             if (action == "script") {
@@ -307,13 +324,15 @@ Rules: Never enter passwords or payment details, never send money or messages un
                 result = setWallpaperScene(j); desc = "set_wallpaper_scene"
             } else if (action == "reset_wallpaper_style") {
                 result = resetWallpaperStyle(); desc = "reset_wallpaper_style"
+            } else if (action == "list_apps") {
+                result = listApps(j.optString("filter")); desc = "list_apps"
             } else if (action == "now_playing") {
                 result = nowPlaying(); desc = "now_playing"
             } else {
                 result = shell(j.optString("command"))
                 desc = "shell `${j.optString("command")}`"
             }
-            say("$step. $desc → ${result.take(160)}" + (if (thought.isNotBlank()) "\n   $thought" else ""))
+            say("$step. $desc → ${if (action == "list_apps") result.take(6000) else result.take(160)}" + (if (thought.isNotBlank()) "\n   $thought" else ""))
             history.add("$step. $desc → ${result.take(700)}")
             Thread.sleep(300)
         }
