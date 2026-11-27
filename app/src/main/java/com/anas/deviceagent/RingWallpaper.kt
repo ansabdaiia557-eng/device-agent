@@ -93,7 +93,8 @@ void main() {
     vec3 col = bg;
 
     float bb = dot(ro, rd);
-    float cc = dot(ro, ro) - 1.7 * 1.7;
+    float rb = (RR + TR * 1.1) * uScale + 0.05 * uWave + 0.06;
+    float cc = dot(ro, ro) - rb * rb;
     float disc = bb * bb - cc;
     if (disc > 0.0) {
         float sq = sqrt(disc);
@@ -102,12 +103,12 @@ void main() {
         float dmin = 1e9;
         float tmin = t;
         bool hit = false;
-        for (int i = 0; i < 60; i++) {
+        for (int i = 0; i < 44; i++) {
             vec3 p = ro + rd * t;
             float h = sdf(p);
             if (h < dmin) { dmin = h; tmin = t; }
             if (h < 0.002) { hit = true; break; }
-            t += h * 0.85;
+            t += h * 0.9;
             if (t > tmax) break;
         }
         float px = tmin * 2.0 * 0.55 / uRes.x;
@@ -571,7 +572,7 @@ class RingWallpaper : WallpaperService() {
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else "simple"
             render(true, vizLive, now)
-            val target = if (NotifState.locked(this@RingWallpaper)) 16L else 33L
+            val target = if (NotifState.locked(this@RingWallpaper)) 16L else 40L
             h.postDelayed(tick, Math.max(1L, target - (System.currentTimeMillis() - now)))
         }
 
