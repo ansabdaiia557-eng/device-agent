@@ -296,9 +296,9 @@ class MusicWallpaper : WallpaperService() {
         private fun updateBands(real: Boolean, now: Long) {
             val tb: Float; val tm: Float; val th: Float
             if (real) {
-                tb = Math.min(1f, avg(bands, 0, 4) * 2.2f * inten)
-                tm = Math.min(1f, avg(bands, 4, 16) * 3.0f * inten)
-                th = Math.min(1f, avg(bands, 16, 32) * 3.8f * inten)
+                tb = Math.min(1f, avg(bands, 0, 4) * 2.97f * inten)
+                tm = Math.min(1f, avg(bands, 4, 16) * 4.05f * inten)
+                th = Math.min(1f, avg(bands, 16, 32) * 5.13f * inten)
             } else {
                 // simulated groove (~120 bpm) when real audio is not available
                 val ph = (now % 500L) / 500f

@@ -211,7 +211,7 @@ object VizNorm {
         e /= 16f
         ref = if (e > ref) e else ref * Math.exp((-dt / 6f).toDouble()).toFloat()
         if (ref < 0.03f) ref = 0.03f
-        val k = 0.6f / ref
+        val k = 0.8f / ref
         for (i in raw.indices) raw[i] = Math.min(1f, raw[i] * k)
     }
 }
@@ -464,7 +464,7 @@ class RingWallpaper : WallpaperService() {
         private fun updateBands(real: Boolean, now: Long) {
             val tb: Float; val tm: Float; val th: Float
             if (real) {
-                tb = Math.min(1f, avg(bands, 0, 4) * 1.6f); tm = Math.min(1f, avg(bands, 4, 16) * 2.2f); th = Math.min(1f, avg(bands, 16, 32) * 3f)
+                tb = Math.min(1f, avg(bands, 0, 4) * 2.16f); tm = Math.min(1f, avg(bands, 4, 16) * 2.97f); th = Math.min(1f, avg(bands, 16, 32) * 4.05f)
             } else {
                 val ph = (now % 500L) / 500f
                 val kick = Math.pow(Math.max(0.0, 1.0 - ph * 2.2), 3.0).toFloat()
@@ -526,9 +526,9 @@ class RingWallpaper : WallpaperService() {
                 rT += dt
                 val loudT = if (playing) (0.55f * mid + 0.4f * bass + 0.5f * high).coerceIn(0f, 1f) else 0f
                 rLoud += (loudT - rLoud) * (if (loudT > rLoud) 0.06f else 0.010f) * (dt / 0.033f).coerceAtMost(3f)
-                val sT = 1f + 0.035f * bass + 0.05f * mid + 0.035f * high + 0.07f * punch.coerceIn(-0.4f, 1f)
+                val sT = 1f + 0.047f * bass + 0.068f * mid + 0.047f * high + 0.095f * punch.coerceIn(-0.4f, 1f)
                 rScale += (sT - rScale) * 0.2f
-                rPulse += (Math.max(0f, punch) * 1.0f + 0.35f * high + 0.25f * mid - rPulse) * 0.25f
+                rPulse += (Math.max(0f, punch) * 1.35f + 0.47f * high + 0.34f * mid - rPulse) * 0.25f
                 rSpin += dt * (0.16f + 0.35f * rLoud)
                 // title: melt old, then form new
                 val t = if (playing) MusicState.songTitle.trim() else ""; val a = if (playing) MusicState.songArtist.trim() else ""
@@ -540,7 +540,7 @@ class RingWallpaper : WallpaperService() {
                 val fs = form * form * (3f - 2f * form)
                 val ax = -0.95f + 0.09f * Math.sin(rT * 0.31).toFloat()
                 val ay = 0.5f + 0.30f * Math.sin(rT * 0.19).toFloat()
-                g.draw(ax, ay, rScale, 1f + 3.2f * (0.6f * rLoud + 0.4f * (0.6f * mid + 0.8f * high).coerceIn(0f, 1f)), rSpin, rT, rPulse.coerceIn(0f, 1f), fs, (0.35f + 0.9f * rLoud).coerceAtMost(1.2f), fade.coerceIn(0f, 1f))
+                g.draw(ax, ay, rScale, 1f + 4.3f * (0.6f * rLoud + 0.4f * (0.6f * mid + 0.8f * high).coerceIn(0f, 1f)), rSpin, rT, rPulse.coerceIn(0f, 1f), fs, (0.35f + 0.9f * rLoud).coerceAtMost(1.2f), fade.coerceIn(0f, 1f))
             } catch (e: Throwable) {
                 getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("ring_error", "render: " + e.message).apply()
                 failed = true; releaseGl()
