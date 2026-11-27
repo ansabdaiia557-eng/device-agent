@@ -192,7 +192,7 @@ class CodeScene {
         }
     }
 
-    fun draw(c0: Canvas, w: Float, h: Float, playing: Boolean, now: Long, bass: Float, punch: Float, high: Float, title: String, artist: String, posMs: Long, durMs: Long, bands: FloatArray, mid: Float) {
+    fun draw(c0: Canvas, w: Float, h: Float, playing: Boolean, now: Long, bass: Float, punch: Float, high: Float, title: String, artist: String, posMs: Long, durMs: Long, bands: FloatArray, midLvl: Float) {
         val cv = c0
         val wi = w.toInt(); val hi = h.toInt()
         if (off == null || off!!.width != wi || off!!.height != hi) {
@@ -259,7 +259,7 @@ class CodeScene {
         var any = 0f; for (b in bands) any += b
         for (i in 0 until 28) {
             val tgt = if (!playing) 0.02f else if (any > 0.05f) Math.min(1f, bands[Math.min(31, i * 32 / 28)] * 2.6f + 0.03f)
-                else (bass + (high - bass) * i / 27f + mid * 0.3f) * (0.55f + 0.45f * Math.sin(now / 130.0 + i * 0.9).toFloat()) + 0.03f
+                else (bass + (high - bass) * i / 27f + midLvl * 0.3f) * (0.55f + 0.45f * Math.sin(now / 130.0 + i * 0.9).toFloat()) + 0.03f
             eq[i] += (tgt.coerceIn(0f, 1f) - eq[i]) * (if (tgt > eq[i]) 0.6f else 0.18f)
         }
         pulseV = Math.max(Math.max(0f, punch), pulseV * 0.9f)
