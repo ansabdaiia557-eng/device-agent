@@ -1,7 +1,7 @@
 name: Device Agent APK
 on:
   push:
-    branches: [device-agent]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: write
