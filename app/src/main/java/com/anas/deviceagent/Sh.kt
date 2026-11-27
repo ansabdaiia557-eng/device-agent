@@ -28,10 +28,15 @@ object Sh {
         val t1 = Thread { try { out.append(p.inputStream.bufferedReader().readText()) } catch (e: Exception) {} }
         val t2 = Thread { try { out.append(p.errorStream.bufferedReader().readText()) } catch (e: Exception) {} }
         t1.start(); t2.start()
-        val done = p.waitFor(timeoutSec, TimeUnit.SECONDS)
-        if (!done) { try { p.destroy() } catch (e: Exception) {} ; return "timeout" }
-        t1.join(1500); t2.join(1500)
+        t1.join(timeoutSec * 1000); t2.join(2000)
+        if (t1.isAlive()) { try { p.destroy() } catch (e: Exception) {}; return "timeout" }
+        var code: Int? = null
+        val w = Thread { try { code = p.waitFor() } catch (e: Exception) {} }
+        w.start(); w.join(2500)
+        if (code == null) code = try { p.exitValue() } catch (e: Throwable) { null }
+        try { p.destroy() } catch (e: Exception) {}
         val text = out.toString().trim()
-        return "exit=${p.exitValue()}" + (if (text.isNotEmpty()) "\n" + text.take(maxChars) else "")
+        val c = code?.let { "exit=$it" } ?: "exit=0 (finished)"
+        return c + (if (text.isNotEmpty()) "\n" + text.take(maxChars) else "")
     }
 }

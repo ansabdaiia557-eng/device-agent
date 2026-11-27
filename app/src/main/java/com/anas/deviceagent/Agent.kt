@@ -122,7 +122,7 @@ Rules: you get the screen list only after a UI action started the UI. Use only i
                 }
                 if (!isTemp(e) || attempt >= 5) throw e
                 val wait = 2L shl (attempt - 1)
-                say("🔁 المزود مشغول شوية، هحاول تاني بعد $wait ث ($attempt/5)")
+                if (attempt == 3) say("🔁 المزود مشغول، بحاول تاني...")
                 Thread.sleep(wait * 1000)
             }
         }
@@ -210,7 +210,7 @@ Rules: you get the screen list only after a UI action started the UI. Use only i
                 }
             } else emptyVd = 0
             val prompt = "GOAL: $goal\n\nSTEPS SO FAR:\n" +
-                (if (history.isEmpty()) "(none)" else history.takeLast(8).joinToString("\n")) +
+                (if (history.isEmpty()) "(none)" else history.takeLast(6).joinToString("\n")) +
                 "\n\nCURRENT SCREEN:\n$screen"
             val raw = generate(prompt)
             val j = try { JSONObject(raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1)) }
@@ -260,7 +260,7 @@ Rules: you get the screen list only after a UI action started the UI. Use only i
                 (if (text.isNotEmpty()) " \"$text\"" else "") +
                 (if (action == "open_app") " ${j.optString("app")}" else "")
             say("$step. $desc → ${result.take(160)}" + (if (thought.isNotBlank()) "\n   $thought" else ""))
-            history.add("$step. $desc → ${result.take(500)}")
+            history.add("$step. $desc → ${result.take(300)}")
             Thread.sleep(if (action == "shell") 300 else 1000)
         }
         say("⏱ وصلت للحد الأقصى ($MAX_STEPS خطوة) ووقفت")

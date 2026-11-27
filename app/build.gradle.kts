@@ -10,8 +10,8 @@ android {
         applicationId = "com.anas.deviceagent"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.8"
+        versionCode = 81
+        versionName = "0.8.1"
     }
     signingConfigs {
         create("fixed") {
