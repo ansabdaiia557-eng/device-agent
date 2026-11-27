@@ -185,6 +185,36 @@ void main() {
 
 """
 
+
+/** Output-mix FFT is captured AFTER the volume stage on many phones, so raw levels follow the volume keys.
+ *  This undoes volume changes (stream volume ratio) and normalises against a slowly decaying peak so only the song's own dynamics remain. */
+object VizNorm {
+    private var ref = 0.05f
+    private var lastIdx = -1
+    private var lastT = 0L
+    fun apply(ctx: Context, raw: FloatArray) {
+        val now = System.currentTimeMillis()
+        val dt = if (lastT == 0L) 0.05f else ((now - lastT) / 1000f).coerceIn(0.005f, 0.5f)
+        lastT = now
+        try {
+            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val idx = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+            if (lastIdx >= 0 && idx != lastIdx && idx > 0 && lastIdx > 0) {
+                val g = Math.pow(idx.toDouble() / lastIdx.toDouble(), 1.6).toFloat()
+                ref = (ref * g).coerceIn(0.01f, 4f)
+            }
+            lastIdx = idx
+        } catch (e: Throwable) {}
+        var e = 0f
+        for (i in 0 until 16) e += raw[i]
+        e /= 16f
+        ref = if (e > ref) e else ref * Math.exp((-dt / 6f).toDouble()).toFloat()
+        if (ref < 0.03f) ref = 0.03f
+        val k = 0.45f / ref
+        for (i in raw.indices) raw[i] = Math.min(1f, raw[i] * k)
+    }
+}
+
 /** Minimal EGL/GLES2 full-screen shader renderer for the glass ring scene. */
 class GlRing {
     private var dpy: EGLDisplay = EGL14.EGL_NO_DISPLAY
@@ -410,14 +440,17 @@ class RingWallpaper : WallpaperService() {
                         if (fft == null) return
                         val n = fft.size / 2
                         var total = 0f
+                        val rawb = FloatArray(32)
                         for (i in 0 until 32) {
                             val from = 1 + i * (n - 1) / 32 / 2
                             val to = Math.max(from + 1, 1 + (i + 1) * (n - 1) / 32 / 2)
                             var s = 0f
                             for (k in from until Math.min(to, n)) { val re = fft[2 * k].toFloat(); val im = fft[2 * k + 1].toFloat(); s += Math.hypot(re.toDouble(), im.toDouble()).toFloat() }
-                            val m = Math.min(1f, s / (to - from) / 60f)
-                            bands[i] = m; total += m
+                            rawb[i] = s / (to - from) / 60f
+                            total += rawb[i]
                         }
+                        VizNorm.apply(this@RingWallpaper, rawb)
+                        for (i in 0 until 32) bands[i] = rawb[i]
                         if (total > 0.05f) lastData = System.currentTimeMillis()
                     }
                 }, Visualizer.getMaxCaptureRate(), false, true)

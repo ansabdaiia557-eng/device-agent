@@ -237,6 +237,7 @@ class MusicWallpaper : WallpaperService() {
                         if (fft == null) return
                         val n = fft.size / 2
                         var total = 0f
+                        val rawb = FloatArray(32)
                         for (i in 0 until 32) {
                             val from = 1 + i * (n - 1) / 32 / 2
                             val to = Math.max(from + 1, 1 + (i + 1) * (n - 1) / 32 / 2)
@@ -245,10 +246,11 @@ class MusicWallpaper : WallpaperService() {
                                 val re = fft[2 * k].toFloat(); val im = fft[2 * k + 1].toFloat()
                                 s += Math.hypot(re.toDouble(), im.toDouble()).toFloat()
                             }
-                            val m = Math.min(1f, s / (to - from) / 60f)
-                            bands[i] = m
-                            total += m
+                            rawb[i] = s / (to - from) / 60f
+                            total += rawb[i]
                         }
+                        VizNorm.apply(this@MusicWallpaper, rawb)
+                        for (i in 0 until 32) bands[i] = rawb[i]
                         if (total > 0.05f) lastData = System.currentTimeMillis()
                     }
                 }, Visualizer.getMaxCaptureRate(), false, true)
