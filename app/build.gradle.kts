@@ -11,7 +11,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 100
-        versionName = "0.51"
+        versionName = "0.52"
     }
     signingConfigs {
         create("fixed") {

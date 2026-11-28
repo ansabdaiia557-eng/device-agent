@@ -144,8 +144,11 @@ void main() {
     vec3 col = c;
     if (cov < 0.999) col = mix(background(uv, vg) + vec3(0.78, 0.8, 0.86) * rimv, c, cov);
     col *= 1.0 - 0.5 * smoothstep(0.3, 1.0, vg);
-    vec2 tc = vec2(uv.x / 0.30 + 0.5, (uv.y - 0.225) / 0.10 + 0.5);
-    if (tc.x > 0.0 && tc.x < 1.0 && tc.y > 0.0 && tc.y < 1.0) {
+    vec2 tc0 = vec2(uv.x / 0.30 + 0.5, (uv.y - 0.225) / 0.10 + 0.5);
+    if (tc0.x > -0.05 && tc0.x < 1.05 && tc0.y > -0.1 && tc0.y < 1.1) {
+        float tt = uTime;
+        vec2 tc = tc0 + vec2(0.010 * sin(tc0.y * 13.0 + tt * 1.5) + 0.005 * sin(tc0.y * 31.0 - tt * 2.4),
+                             0.060 * sin(tc0.x * 9.0 + tt * 1.2) + 0.030 * sin(tc0.x * 21.0 - tt * 1.8) + 0.012 * sin(tc0.x * 40.0 + tt * 3.0));
         float m = texture2D(uTex, tc).r;
         vec2 e = vec2(1.6 / 576.0, 1.6 / 192.0);
         float gx = texture2D(uTex, tc + vec2(e.x, 0.0)).r - texture2D(uTex, tc - vec2(e.x, 0.0)).r;
@@ -153,7 +156,8 @@ void main() {
         float edge = clamp(length(vec2(gx, gy)) * 3.2, 0.0, 1.0);
         float inside = smoothstep(0.3, 0.6, m);
         col += vec3(0.5, 0.52, 0.56) * m * 0.03;
-        vec3 glass = vec3(0.012, 0.014, 0.018) + vec3(0.03, 0.034, 0.04) * (1.0 - tc.y) * inside;
+        float flow = 0.5 + 0.5 * sin(tc0.x * 26.0 - tt * 2.0 + sin(tc0.y * 9.0 + tt));
+        vec3 glass = vec3(0.012, 0.014, 0.018) + vec3(0.03, 0.034, 0.04) * (1.0 - tc.y) * inside + vec3(0.05, 0.055, 0.065) * flow * flow * inside;
         glass += vec3(0.55, 0.58, 0.63) * edge * (0.45 + 0.5 * clamp(-gy * 4.0 + 0.3, 0.0, 1.0));
         col = mix(col, glass, inside);
     }
