@@ -249,8 +249,7 @@ class MainActivity : Activity() {
         }
         val wpPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            setPadding(0, dp(8), 0, 0)
+            setPadding(0, dp(8), 0, dp(40))
             addView(wpStatus); addView(audioBtn); addView(chooseBtn); addView(listenBtn); addView(baseBtn)
             addView(LinearLayout(this@MainActivity).apply {
                 addView(sceneBtn("مشهد: صورتي", "image"), LinearLayout.LayoutParams(0, -2, 1f))
@@ -327,11 +326,12 @@ class MainActivity : Activity() {
             addView(slider("شدة التأثير", ((st0.intensity - 0.3f) / 1.3f * 100).toInt(), 100) { s, v -> s.intensity = 0.3f + v * 1.3f })
             addView(resetBtn)
         }
+        val wpScroll = ScrollView(this).apply { visibility = View.GONE; isFillViewport = false; addView(wpPanel) }
 
         fun show(i: Int) {
             agentPanel.visibility = if (i == 0) View.VISIBLE else View.GONE
             termPanel.visibility = if (i == 1) View.VISIBLE else View.GONE
-            wpPanel.visibility = if (i == 2) View.VISIBLE else View.GONE
+            wpScroll.visibility = if (i == 2) View.VISIBLE else View.GONE
             refresh()
         }
         fun tab(label: String, i: Int) = Button(this).apply { text = label; setOnClickListener { show(i) } }
@@ -345,7 +345,7 @@ class MainActivity : Activity() {
         root.addView(tabs)
         root.addView(agentPanel, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(termPanel, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(wpPanel, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(wpScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         try {
             Shizuku.addBinderReceivedListenerSticky(binderListener)
