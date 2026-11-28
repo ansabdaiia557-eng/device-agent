@@ -166,8 +166,8 @@ void main() {
     vec2 tc0 = vec2(uv.x / 0.30 + 0.5, (uv.y - 0.225) / 0.10 + 0.5);
     if (tc0.x > -0.05 && tc0.x < 1.05 && tc0.y > -0.1 && tc0.y < 1.1) {
         float tt = uTime;
-        vec2 tc = tc0 + vec2(0.010 * sin(tc0.y * 13.0 + tt * 1.5) + 0.005 * sin(tc0.y * 31.0 - tt * 2.4),
-                             0.060 * sin(tc0.x * 9.0 + tt * 1.2) + 0.030 * sin(tc0.x * 21.0 - tt * 1.8) + 0.012 * sin(tc0.x * 40.0 + tt * 3.0));
+        vec2 tc = tc0 + vec2(0.004 * sin(tc0.y * 13.0 + tt * 0.9) + 0.002 * sin(tc0.y * 31.0 - tt * 1.4),
+                             0.022 * sin(tc0.x * 9.0 + tt * 0.7) + 0.010 * sin(tc0.x * 21.0 - tt * 1.1) + 0.004 * sin(tc0.x * 40.0 + tt * 1.8));
         float m = texture2D(uTex, tc).r;
         vec2 e = vec2(1.6 / 576.0, 1.6 / 192.0);
         float gx = texture2D(uTex, tc + vec2(e.x, 0.0)).r - texture2D(uTex, tc - vec2(e.x, 0.0)).r;
@@ -410,6 +410,7 @@ class LiquidWallpaper : WallpaperService() {
         private var blackIdle = true
         private var rimOn = true
         private var shatStart = 0L
+        private var touchDown = false; private var touchUp = 0L
         private var touchT0 = 0L; private var touchWx = 0f; private var touchWy = 0f
         private var lowBatt = false
         private var simT = 0f
@@ -520,16 +521,24 @@ class LiquidWallpaper : WallpaperService() {
             val hh = dm.heightPixels.toFloat().coerceAtLeast(1f)
             touchWx = (x - dm.widthPixels / 2f) / hh * 4.84f
             touchWy = (hh / 2f - y) / hh * 4.84f
-            touchT0 = System.currentTimeMillis()
+        }
+
+        private fun touchStart(x: Float, y: Float) {
+            touchAt(x, y)
+            touchDown = true; touchT0 = System.currentTimeMillis()
             h.removeCallbacks(tick); h.post(tick)
         }
 
         override fun onTouchEvent(e: android.view.MotionEvent) {
-            if (e.action == android.view.MotionEvent.ACTION_DOWN) touchAt(e.x, e.y)
+            when (e.action) {
+                android.view.MotionEvent.ACTION_DOWN -> touchStart(e.x, e.y)
+                android.view.MotionEvent.ACTION_MOVE -> if (touchDown) touchAt(e.x, e.y)
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> { touchDown = false; touchUp = System.currentTimeMillis() }
+            }
         }
 
         override fun onCommand(action: String?, x: Int, y: Int, z: Int, extras: android.os.Bundle?, resultRequested: Boolean): android.os.Bundle? {
-            if (action == "android.wallpaper.tap") touchAt(x.toFloat(), y.toFloat())
+            if (action == "android.wallpaper.tap") { touchStart(x.toFloat(), y.toFloat()); touchDown = false; touchUp = System.currentTimeMillis() }
             return super.onCommand(action, x, y, z, extras, resultRequested)
         }
 
@@ -599,8 +608,11 @@ class LiquidWallpaper : WallpaperService() {
                 g.offY = rOff
                 g.rim = if (rimOn) 1f else 0f
                 run {
-                    val age = (now - touchT0) / 1000f
-                    if (touchT0 > 0L && age < 2.4f) { g.tx = touchWx; g.ty = touchWy; g.tz = age; g.tw = Math.exp(-age * 1.5).toFloat() } else g.tw = 0f
+                    if (touchDown) { g.tx = touchWx; g.ty = touchWy; g.tz = ((now - touchT0) / 1000f) % 1.3f; g.tw = 1f }
+                    else {
+                        val age = (now - touchUp) / 1000f
+                        if (touchT0 > 0L && age < 1.6f) { g.tx = touchWx; g.ty = touchWy; g.tz = age + 0.6f; g.tw = Math.exp(-age * 2.6).toFloat() } else g.tw = 0f
+                    }
                     val su = (now - shatStart) / 1000f / 1.3f
                     g.shat = if (shatStart > 0L && su in 0f..1f && playing) (Math.sin(Math.PI * su).toFloat().let { it * Math.sqrt(it.toDouble()).toFloat() }) * 0.95f else 0f
                 }
