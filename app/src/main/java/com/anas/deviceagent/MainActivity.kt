@@ -241,6 +241,12 @@ class MainActivity : Activity() {
             text = "مشهد: الحلقة الزجاجية"
             setOnClickListener { pickLive(RingWallpaper::class.java) }
         }
+        val lockStatus = TextView(this).apply { textSize = 13f; text = LockSetup.status(this@MainActivity) }
+        val lockCb = android.widget.CheckBox(this).apply {
+            text = "شاشة القفل الجديدة (iOS 26 زجاجية) مفعّلة"
+            isChecked = prefs.getBoolean("lock_on", false)
+            setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("lock_on", on).apply(); if (on) LockSetup.startService(this@MainActivity) else stopService(Intent(this@MainActivity, LockService::class.java)); Toast.makeText(this@MainActivity, if (on) "تم، اقفل الشاشة وافتحها" else "اتقفلت", Toast.LENGTH_SHORT).show() }
+        }
         val wpPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
@@ -252,19 +258,20 @@ class MainActivity : Activity() {
                 addView(sceneBtn("مشهد: الأكواد", "code"), LinearLayout.LayoutParams(0, -2, 1f))
             })
             addView(ringBtn)
-            addView(android.widget.CheckBox(this@MainActivity).apply {
-                text = "شاشة القفل الجديدة (iOS 26 زجاجية) مفعّلة"
-                isChecked = prefs.getBoolean("lock_on", false)
-                setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("lock_on", on).apply(); Toast.makeText(this@MainActivity, if (on) "تم، اقفل الشاشة وافتحها" else "اتقفلت", Toast.LENGTH_SHORT).show() }
-            })
+            addView(lockStatus)
+            addView(Button(this@MainActivity).apply { text = "تحديث الحالة"; setOnClickListener { lockStatus.text = LockSetup.status(this@MainActivity) } })
+            addView(lockCb)
             addView(Button(this@MainActivity).apply {
                 text = "تفعيل شاشة القفل الجديدة (يمنح كل الأذونات)"
                 setOnClickListener {
                     prefs.edit().putBoolean("lock_on", true).apply()
+                    lockCb.isChecked = true
+                    LockSetup.startService(this@MainActivity)
                     Thread {
                         val r = LockSetup.grant(this@MainActivity)
                         runOnUiThread {
                             Toast.makeText(this@MainActivity, r, Toast.LENGTH_LONG).show()
+                            lockStatus.text = LockSetup.status(this@MainActivity)
                             if (!android.provider.Settings.canDrawOverlays(this@MainActivity)) try { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName"))) } catch (e: Throwable) {}
                         }
                     }.start()

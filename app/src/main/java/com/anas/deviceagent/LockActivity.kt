@@ -32,14 +32,28 @@ import android.widget.FrameLayout
 /** The custom lock screen. Sits above the system lock (system lock must be None, so swipe-up unlocks cleanly). */
 object LockSetup {
     fun enabled(c: Context) = c.getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean("lock_on", false)
+    fun log(c: Context, msg: String) {
+        val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+        c.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("lock_last", "$t $msg").apply()
+    }
+    fun status(c: Context): String {
+        val p = c.getSharedPreferences("prefs", Context.MODE_PRIVATE)
+        fun yn(b: Boolean) = if (b) "✅" else "❌"
+        val ov = try { android.provider.Settings.canDrawOverlays(c) } catch (e: Throwable) { false }
+        return "قارئ الإشعارات: ${yn(MediaListener.inst != null)}\nShizuku: ${yn(Sh.granted())}\nالظهور فوق التطبيقات: ${yn(ov)}\nخدمة القفل شغالة: ${yn(LockService.running)}\nالتفعيل: ${yn(p.getBoolean("lock_on", false))}\nآخر إطفاء شاشة: ${p.getString("lock_last", "لسه محصلش")}"
+    }
+    fun startService(c: Context) {
+        try { val i = Intent(c, LockService::class.java); if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i) else c.startService(i) } catch (e: Throwable) { log(c, "service start failed: ${e.javaClass.simpleName}") }
+    }
     fun show(c: Context, viaShizuku: Boolean) {
         try {
             if (viaShizuku && Sh.granted()) {
-                Thread { try { Sh.exec(listOf("am", "start", "-n", "com.anas.deviceagent/.LockActivity", "--ez", "sleep", "true")) } catch (e: Throwable) {} }.start()
+                Thread { try { val r = Sh.exec(listOf("am", "start", "-n", "com.anas.deviceagent/.LockActivity", "--ez", "sleep", "true"), 8, 120); log(c, "launch shizuku: " + r.replace("\n", " ").take(90)) } catch (e: Throwable) { log(c, "launch shizuku error ${e.javaClass.simpleName}") } }.start()
                 return
             }
             c.startActivity(Intent(c, LockActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("sleep", true))
-        } catch (e: Throwable) {}
+            log(c, "launch startActivity sent (no shizuku)")
+        } catch (e: Throwable) { log(c, "launch failed: ${e.javaClass.simpleName} ${e.message?.take(60)}") }
     }
     /** Grants everything it can through Shizuku. Returns a short report. */
     fun grant(c: Context): String {
@@ -290,4 +304,38 @@ class LockActivity : Activity(), SensorEventListener {
             }).start()
     }
     private fun toggleTorchOffQuiet() { try { val cm = getSystemService(Context.CAMERA_SERVICE) as CameraManager; for (id in cm.cameraIdList) try { cm.setTorchMode(id, false) } catch (e: Throwable) {} } catch (e: Throwable) {} }
+}
+
+
+/** Keeps the process alive and owns the SCREEN_OFF receiver. */
+class LockService : android.app.Service() {
+    companion object { @Volatile var running = false }
+    private var reg = false
+    private val rx = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+            if (i?.action == Intent.ACTION_SCREEN_OFF) {
+                if (!LockSetup.enabled(this@LockService)) { LockSetup.log(this@LockService, "screen off, lock_on is off"); return }
+                LockSetup.log(this@LockService, "screen off, launching")
+                Thread { LockAssets.load(this@LockService) }.start()
+                LockSetup.show(this@LockService, true)
+            }
+        }
+    }
+    override fun onBind(i: Intent?): android.os.IBinder? = null
+    override fun onStartCommand(i: Intent?, f: Int, id: Int): Int {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(android.app.NotificationChannel("lock", "Lock screen", android.app.NotificationManager.IMPORTANCE_MIN))
+            val n = android.app.Notification.Builder(this, "lock").setSmallIcon(android.R.drawable.ic_lock_idle_lock).setContentTitle("Lock screen active").setOngoing(true).build()
+            startForeground(77, n)
+        } catch (e: Throwable) { LockSetup.log(this, "startForeground failed: ${e.javaClass.simpleName}") }
+        if (!reg) { try { registerReceiver(rx, IntentFilter(Intent.ACTION_SCREEN_OFF)); reg = true } catch (e: Throwable) {} }
+        running = true
+        return START_STICKY
+    }
+    override fun onDestroy() { running = false; if (reg) try { unregisterReceiver(rx) } catch (e: Throwable) {}; super.onDestroy() }
+}
+
+class LockBoot : BroadcastReceiver() {
+    override fun onReceive(c: Context, i: Intent?) { if (LockSetup.enabled(c)) LockSetup.startService(c) }
 }

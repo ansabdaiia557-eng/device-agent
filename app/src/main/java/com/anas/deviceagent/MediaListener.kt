@@ -23,10 +23,6 @@ class MediaListener : NotificationListenerService() {
     private val rx = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
             h.removeCallbacks(sweep); h.postDelayed(sweep, 600)
-            if (i?.action == Intent.ACTION_SCREEN_OFF && LockSetup.enabled(this@MediaListener)) {
-                Thread { LockAssets.load(this@MediaListener) }.start()
-                LockSetup.show(this@MediaListener, true)
-            }
         }
     }
 
@@ -50,6 +46,7 @@ class MediaListener : NotificationListenerService() {
         inst = this
         NotifState.rebuild(this)
         Thread { LockAssets.load(this) }.start()
+        if (LockSetup.enabled(this)) LockSetup.startService(this)
         try {
             val f = IntentFilter(Intent.ACTION_SCREEN_OFF)
             registerReceiver(rx, f)
