@@ -127,7 +127,7 @@ class StereoService : Service() {
                     val tgt = (if (raw < 0f) -m else m).coerceIn(-1f, 1f)
                     smooth += (tgt - smooth) * 0.2f
                     StereoState.pan = smooth
-                } else smooth *= 0.9f.also { StereoState.pan = smooth }
+                } else { smooth *= 0.9f; StereoState.pan = smooth }
                 StereoState.energy = eSm
                 StereoState.lastT = System.currentTimeMillis()
             }
