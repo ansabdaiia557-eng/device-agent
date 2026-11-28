@@ -104,7 +104,7 @@ class LockActivity : Activity(), SensorEventListener {
     private val rx = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
             when (i?.action) {
-                Intent.ACTION_SCREEN_ON -> { if (hidden) playEntrance() }
+                Intent.ACTION_SCREEN_ON -> { if (hidden) scheduleEntrance() }
                 Intent.ACTION_SCREEN_OFF -> { setHidden() }
             }
         }
@@ -133,7 +133,7 @@ class LockActivity : Activity(), SensorEventListener {
         cards.items = visibleItems()
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         registerReceiver(rx, IntentFilter(Intent.ACTION_SCREEN_ON).also { it.addAction(Intent.ACTION_SCREEN_OFF) })
-        if (!pm.isInteractive) setHidden() else playEntrance()
+        if (!pm.isInteractive) setHidden() else { setHidden(); scheduleEntrance() }
         MediaListener.onChange = { h.post { cards.items = visibleItems() } }
     }
 
@@ -144,8 +144,8 @@ class LockActivity : Activity(), SensorEventListener {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
     }
-    override fun onWindowFocusChanged(f: Boolean) { super.onWindowFocusChanged(f); if (f) immersive() }
-    override fun onNewIntent(i: Intent?) { super.onNewIntent(i); setIntent(i); cards.items = visibleItems(); val pm = getSystemService(Context.POWER_SERVICE) as PowerManager; if (pm.isInteractive && hidden) playEntrance() }
+    override fun onWindowFocusChanged(f: Boolean) { super.onWindowFocusChanged(f); if (f) { immersive(); if (hidden) scheduleEntrance() } }
+    override fun onNewIntent(i: Intent?) { super.onNewIntent(i); setIntent(i); cards.items = visibleItems(); val pm = getSystemService(Context.POWER_SERVICE) as PowerManager; if (pm.isInteractive && hidden) scheduleEntrance() }
     @Deprecated("no back") override fun onBackPressed() {}
 
     private fun resetStage() {
@@ -153,7 +153,20 @@ class LockActivity : Activity(), SensorEventListener {
         cards.expand = 0f; cards.scroll = 0f; applyExpand(0f); unlocking = false
     }
 
+    private val startRun = Runnable {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (hidden && pm.isInteractive && hasWindowFocus() && stage.isAttachedToWindow) playEntrance()
+    }
+    /** Starts the sequence only when the screen is on AND this window has focus and has been drawn, plus a short settle delay. */
+    private fun scheduleEntrance() {
+        h.removeCallbacks(startRun)
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!pm.isInteractive || !hasWindowFocus()) return
+        stage.postOnAnimation { h.postDelayed(startRun, 280) }
+    }
+
     private fun setHidden() {
+        h.removeCallbacks(startRun)
         hidden = true; resetStage()
         cards.alpha = 0f; clock.alpha = 0f; dateV.alpha = 0f; photoV.alpha = 0f; figure.alpha = 0f
     }
@@ -188,6 +201,7 @@ class LockActivity : Activity(), SensorEventListener {
     private var sm: SensorManager? = null
     override fun onResume() {
         super.onResume()
+        if (hidden) scheduleEntrance()
         try { sm = getSystemService(Context.SENSOR_SERVICE) as SensorManager; sm?.registerListener(this, sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_UI) } catch (e: Throwable) {}
     }
     override fun onPause() { super.onPause(); try { sm?.unregisterListener(this) } catch (e: Throwable) {} }
