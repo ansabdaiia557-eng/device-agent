@@ -57,7 +57,7 @@ class LockFigureView(ctx: Context) : View(ctx) {
 }
 
 /** The giant clock with real blurred glass, and the date above it. Static, so it is drawn once a minute. */
-class LockClockView(ctx: Context) : View(ctx) {
+class LockClockView(ctx: Context, private val dateOnly: Boolean = false) : View(ctx) {
     private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = try { Typeface.createFromAsset(ctx.assets, "clock_font.otf") } catch (e: Throwable) { Typeface.create("sans-serif-condensed", Typeface.NORMAL) }; textSize = 400f }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val inP = Paint(Paint.FILTER_BITMAP_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN) }
@@ -88,19 +88,22 @@ class LockClockView(ctx: Context) : View(ctx) {
 
     override fun onDraw(c: Canvas) {
         c.save(); LockDesign.apply(c, width, height)
-        buildPath(timeText())
-        val blur = LockAssets.blurP
-        val sc = c.saveLayer(0f, 0f, LockDesign.W, LockDesign.H, null)
-        c.drawPath(path, fill)
-        if (blur != null) c.drawBitmap(blur, null, dst, inP)
-        c.drawRect(dst, tint)
-        c.drawRect(target, grad)
-        c.save(); c.translate(2.5f, 2.5f); c.drawPath(path, hi); c.restore()
-        c.save(); c.translate(-3.5f, -3.5f); c.drawPath(path, lo); c.restore()
-        c.restoreToCount(sc)
-        c.drawPath(path, hair)
-        val d = SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(Date())
-        c.drawText(d, LockDesign.W / 2f, 178f, datePaint)
+        if (dateOnly) {
+            val d = SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(Date())
+            c.drawText(d, LockDesign.W / 2f, 178f, datePaint)
+        } else {
+            buildPath(timeText())
+            val blur = LockAssets.blurP
+            val sc = c.saveLayer(0f, 0f, LockDesign.W, LockDesign.H, null)
+            c.drawPath(path, fill)
+            if (blur != null) c.drawBitmap(blur, null, dst, inP)
+            c.drawRect(dst, tint)
+            c.drawRect(target, grad)
+            c.save(); c.translate(2.5f, 2.5f); c.drawPath(path, hi); c.restore()
+            c.save(); c.translate(-3.5f, -3.5f); c.drawPath(path, lo); c.restore()
+            c.restoreToCount(sc)
+            c.drawPath(path, hair)
+        }
         c.restore()
     }
 }

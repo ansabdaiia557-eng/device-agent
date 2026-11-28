@@ -89,6 +89,9 @@ object LockSetup {
 class LockActivity : Activity(), SensorEventListener {
     private lateinit var stage: FrameLayout
     private lateinit var clock: LockClockView
+    private lateinit var dateV: LockClockView
+    private lateinit var photoV: LockPhotoView
+    private var entOff = 0f
     private lateinit var figure: LockFigureView
     private lateinit var dim: View
     private lateinit var cards: LockCardsView
@@ -116,9 +119,11 @@ class LockActivity : Activity(), SensorEventListener {
         if (Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.also { it.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
         LockAssets.load(this)
         stage = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
-        stage.addView(LockPhotoView(this))
+        photoV = LockPhotoView(this); stage.addView(photoV)
         clock = LockClockView(this).also { stage.addView(it) }
+        dateV = LockClockView(this, true)
         figure = LockFigureView(this).also { stage.addView(it) }
+        stage.addView(dateV)
         dim = View(this).apply { setBackgroundColor(Color.BLACK); alpha = 0f }
         stage.addView(dim)
         cards = LockCardsView(this).also { stage.addView(it) }
@@ -144,22 +149,38 @@ class LockActivity : Activity(), SensorEventListener {
     @Deprecated("no back") override fun onBackPressed() {}
 
     private fun resetStage() {
-        stage.animate().cancel(); stage.translationY = 0f; stage.alpha = 1f; stage.scaleX = 1f; stage.scaleY = 1f
+        for (v in listOf<View>(photoV, clock, dateV, figure, cards)) { v.animate().cancel(); v.animate().setStartDelay(0) }; entOff = 0f; dateV.translationY = 0f; photoV.alpha = 1f; figure.alpha = 1f; stage.animate().cancel(); stage.translationY = 0f; stage.alpha = 1f; stage.scaleX = 1f; stage.scaleY = 1f
         cards.expand = 0f; cards.scroll = 0f; applyExpand(0f); unlocking = false
     }
 
     private fun setHidden() {
         hidden = true; resetStage()
-        cards.alpha = 0f; clock.alpha = 0f
+        cards.alpha = 0f; clock.alpha = 0f; dateV.alpha = 0f; photoV.alpha = 0f; figure.alpha = 0f
     }
 
-    /** Drawer entrance: all cards rise together as one block, the clock fades in. No resize. */
+    private fun layers(on: Boolean) {
+        val t = if (on) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE
+        for (v in listOf<View>(photoV, clock, dateV, figure, cards)) v.setLayerType(t, null)
+    }
+
+    /** iPhone-style sequence: photo, then clock, then date, then the cards rise as one drawer. All on the GPU (alpha and translation only). */
     private fun playEntrance() {
         hidden = false; resetStage()
+        val dp = resources.displayMetrics.density
         val H = stage.height.toFloat().let { if (it <= 0f) resources.displayMetrics.heightPixels.toFloat() else it }
-        cards.alpha = 0f; cards.translationY = H * 0.18f; clock.alpha = 0f
-        cards.animate().translationY(0f).alpha(1f).setDuration(420).setInterpolator(DecelerateInterpolator(2f)).start()
-        clock.animate().alpha(1f).setDuration(380).start()
+        layers(true)
+        photoV.alpha = 0f; figure.alpha = 0f; clock.alpha = 0f; dateV.alpha = 0f; cards.alpha = 0f
+        entOff = 36f * dp; clock.translationY = py + entOff
+        dateV.translationY = 16f * dp; cards.translationY = H * 0.18f
+        val ease = DecelerateInterpolator(2f)
+        photoV.animate().alpha(1f).setDuration(150).setInterpolator(ease).start()
+        figure.animate().alpha(1f).setDuration(150).setInterpolator(ease).start()
+        clock.animate().alpha(1f).setStartDelay(90).setDuration(300).setInterpolator(ease).start()
+        ValueAnimator.ofFloat(36f * dp, 0f).apply { startDelay = 90; duration = 300; interpolator = ease
+            addUpdateListener { entOff = it.animatedValue as Float; clock.translationY = py + entOff }; start() }
+        dateV.animate().alpha(1f).translationY(0f).setStartDelay(200).setDuration(240).setInterpolator(ease).start()
+        cards.animate().alpha(1f).translationY(0f).setStartDelay(310).setDuration(420).setInterpolator(ease)
+            .withEndAction { layers(false) }.start()
     }
 
     // ---- clock parallax ----
@@ -176,7 +197,7 @@ class LockActivity : Activity(), SensorEventListener {
         val tx = (-e.values[0] / 9.8f).coerceIn(-0.6f, 0.6f) * 14f * dp
         val ty = ((e.values[1] / 9.8f) - 0.75f).coerceIn(-0.5f, 0.5f) * 10f * dp
         px += (tx - px) * 0.12f; py += (ty - py) * 0.12f
-        if (cards.expand < 0.05f) { clock.translationX = px; clock.translationY = py }
+        if (cards.expand < 0.05f) { clock.translationX = px; clock.translationY = py + entOff }
     }
 
     override fun onDestroy() {
@@ -193,6 +214,7 @@ class LockActivity : Activity(), SensorEventListener {
         clock.pivotX = clock.width / 2f; clock.pivotY = clock.height * 0.15f
         clock.scaleX = 1f - 0.5f * e; clock.scaleY = clock.scaleX
         clock.alpha = 1f - 0.2f * e
+        dateV.alpha = 1f - e
         if (e > 0.05f) { clock.translationX = 0f; clock.translationY = -40f * dp * e }
     }
     private fun animExpand(to: Boolean) {
