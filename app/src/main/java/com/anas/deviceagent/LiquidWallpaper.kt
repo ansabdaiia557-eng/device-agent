@@ -34,6 +34,8 @@ uniform float uBass;
 uniform float uBeat;
 uniform float uHigh;
 uniform float uPanX;
+uniform float uPanY;
+uniform vec2 uDir;
 uniform float uFade;
 uniform float uOffY;
 uniform float uStretch;
@@ -42,9 +44,9 @@ float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x *
 
 float map(vec3 p0) {
     float t = uTime;
-    vec3 p = p0;
+    vec3 p = vec3(dot(p0.xy, uDir), -p0.x * uDir.y + p0.y * uDir.x, p0.z);
     float sa = abs(uStretch);
-    float sg = uStretch < 0.0 ? -1.0 : 1.0;
+    float sg = 1.0;
     float lead = clamp(p.x * sg / 0.5, -1.0, 1.0);
     p.yz *= 1.0 + sa * (0.55 * lead + 0.35);
     p.x /= 1.0 + 0.85 * sa;
@@ -76,7 +78,7 @@ vec3 background(vec2 uv, float vg) {
     float ang = uv.x + (uv.y - 0.6) * 0.1;
     bg += vec3(0.05, 0.052, 0.056) * exp(-pow((ang + 0.02) / 0.09, 2.0)) * smoothstep(-0.45, 0.55, uv.y) * 0.9;
     // halo rings that breathe with the bass
-    float rr = length(uv - vec2(uPanX * 0.2, 0.02));
+    float rr = length(uv - vec2(uPanX * 0.2, 0.02 + uPanY * 0.2));
     for (int k = 0; k < 4; k++) {
         float fk = float(k);
         float rad = 0.22 + 0.05 * fk * fk * 0.5 + fk * 0.06 + uBass * 0.01 * (fk + 1.0);
@@ -90,7 +92,7 @@ void main() {
     float vg = length(uv * vec2(1.0, 0.7));
     vec3 ro = vec3(0.0, 0.0, 3.0);
     vec3 rd = normalize(vec3(uv, -0.62));
-    vec3 ctr = vec3(uPanX, 0.0, 0.0);
+    vec3 ctr = vec3(uPanX, uPanY, 0.0);
     float R = 0.44 + 0.035 * uBass + 0.08 + 0.7 * abs(uStretch);
     vec3 oc = ro - ctr;
     float bb = dot(oc, rd);
@@ -252,7 +254,7 @@ class GlLiquid {
         EGL14.eglSwapBuffers(dpy, surf)
     }
 
-    fun draw(bass: Float, beat: Float, high: Float, time: Float, panX: Float, stretch: Float, fade: Float) {
+    fun draw(bass: Float, beat: Float, high: Float, time: Float, panX: Float, stretch: Float, fade: Float, panY: Float = 0f, dx: Float = 1f, dy: Float = 0f) {
         val a = IntArray(1)
         EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_WIDTH, a, 0); w = a[0]
         EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_HEIGHT, a, 0); h = a[0]
@@ -260,7 +262,7 @@ class GlLiquid {
         GLES20.glUseProgram(prog)
         GLES20.glUniform2f(u("uRes"), w.toFloat(), h.toFloat())
         GLES20.glUniform1f(u("uTime"), time); GLES20.glUniform1f(u("uBass"), bass); GLES20.glUniform1f(u("uBeat"), beat)
-        GLES20.glUniform1f(u("uHigh"), high); GLES20.glUniform1f(u("uPanX"), panX); GLES20.glUniform1f(u("uStretch"), stretch)
+        GLES20.glUniform1f(u("uHigh"), high); GLES20.glUniform1f(u("uPanX"), panX); GLES20.glUniform1f(u("uStretch"), stretch); GLES20.glUniform1f(u("uPanY"), panY); GLES20.glUniform2f(u("uDir"), dx, dy)
         GLES20.glUniform1f(u("uFade"), fade); GLES20.glUniform1f(u("uOffY"), offY)
         GLES20.glEnableVertexAttribArray(0)
         quad.position(0)
@@ -354,7 +356,7 @@ class LiquidWallpaper : WallpaperService() {
         private var form = 0f; private var shown = ""; private var want = ""
         private var blackIdle = true
         private var simT = 0f
-        private var liqT = 0f; private var lpos = 0f; private var lvel = 0f; private var lstretch = 0f; private var lbass = 0f
+        private var liqT = 0f; private var lpos = 0f; private var lposY = 0f; private var lvelY = 0f; private var ldx = 1f; private var ldy = 0f; private var lvel = 0f; private var lstretch = 0f; private var lbass = 0f
         private val tick = Runnable { step() }
 
         override fun onVisibilityChanged(v: Boolean) {
@@ -539,19 +541,33 @@ class LiquidWallpaper : WallpaperService() {
                 // stereo pull with resistance: attraction point = pan, body trails on a soft spring and stretches under tension
                 val stLive = StereoState.live(now)
                 val sim = 0f
-                val targetPan = if (!playing) 0f else if (stLive) (StereoState.pan * 0.8f).coerceIn(-0.8f, 0.8f) else sim
+                var tx = if (!playing) 0f else if (stLive) (StereoState.pan * 0.8f).coerceIn(-0.8f, 0.8f) else sim
+                var ty = if (!playing) 0f else if (stLive) (StereoState.tilt * 0.5f).coerceIn(-0.5f, 0.5f) else sim
+                run {
+                    val mg = Math.hypot(tx.toDouble(), ty.toDouble()).toFloat()
+                    if (mg > 0.02f) {
+                        val q = Math.PI / 4.0
+                        val ang = Math.round(Math.atan2(ty.toDouble(), tx.toDouble()) / q) * q
+                        tx = (mg * Math.cos(ang)).toFloat(); ty = (mg * Math.sin(ang)).toFloat()
+                    }
+                }
                 liqT += dt * (0.5f + 1.2f * rLoud)
                 var left = dt
                 while (left > 0f) {
                     val sdt = Math.min(left, 0.008f); left -= sdt
-                    val acc = 48f * (targetPan - lpos) - 8.5f * lvel
-                    lvel += acc * sdt; lpos += lvel * sdt
+                    lvel += (48f * (tx - lpos) - 8.5f * lvel) * sdt; lpos += lvel * sdt
+                    lvelY += (48f * (ty - lposY) - 8.5f * lvelY) * sdt; lposY += lvelY * sdt
                 }
-                val tension = (targetPan - lpos)
-                val sTarget = (tension / 0.15f).coerceIn(-1.0f, 1.0f)
+                val tnx = tx - lpos; val tny = ty - lposY
+                val tmag = Math.hypot(tnx.toDouble(), tny.toDouble()).toFloat()
+                val sTarget = (tmag / 0.15f).coerceIn(0f, 1.0f)
+                if (tmag > 0.01f) {
+                    ldx += (tnx / tmag - ldx) * 0.5f; ldy += (tny / tmag - ldy) * 0.5f
+                    val ln = Math.hypot(ldx.toDouble(), ldy.toDouble()).toFloat().coerceAtLeast(1e-3f); ldx /= ln; ldy /= ln
+                }
                 lstretch += (sTarget - lstretch) * 0.4f
                 lbass += ((0.6f * bass + 0.4f * punch.coerceIn(0f, 1f)) - lbass) * 0.25f
-                g.draw(lbass.coerceIn(0f, 1.2f), rPulse.coerceIn(0f, 1f), high.coerceIn(0f, 1f), liqT, lpos, lstretch, fade.coerceIn(0f, 1f))
+                g.draw(lbass.coerceIn(0f, 1.2f), rPulse.coerceIn(0f, 1f), high.coerceIn(0f, 1f), liqT, lpos, lstretch, fade.coerceIn(0f, 1f), lposY, ldx, ldy)
             } catch (e: Throwable) {
                 getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("liquid_error", "render: " + e.message).apply()
                 failed = true; releaseGl()

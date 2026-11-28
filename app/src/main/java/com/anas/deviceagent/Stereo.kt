@@ -24,6 +24,7 @@ import android.widget.Toast
 /** Latest left/right balance from the playback capture. pan: -1 = all left, +1 = all right. */
 object StereoState {
     @Volatile var pan = 0f
+    @Volatile var tilt = 0f
     @Volatile var lastT = 0L
     @Volatile var energy = 0f
     @Volatile var active = false
@@ -110,12 +111,16 @@ class StereoService : Service() {
             val buf = ShortArray(2048)
             var smooth = 0f
             var eSm = 0f
+            var tSm = 0f
+            var tBase = 0f
+            var lp = 0.0
             while (run) {
                 val n = r.read(buf, 0, buf.size)
                 if (n <= 0) { try { Thread.sleep(20) } catch (e: Throwable) {}; continue }
                 var sl = 0.0; var sr = 0.0
                 var i = 0
-                while (i + 1 < n) { val l = buf[i].toDouble(); val rr = buf[i + 1].toDouble(); sl += l * l; sr += rr * rr; i += 2 }
+                var lfE = 0.0; var hfE = 0.0
+                while (i + 1 < n) { val l = buf[i].toDouble(); val rr = buf[i + 1].toDouble(); sl += l * l; sr += rr * rr; val mo = (l + rr) * 0.5; lp += (mo - lp) * 0.06; val hp = mo - lp; lfE += lp * lp; hfE += hp * hp; i += 2 }
                 val frames = (n / 2).coerceAtLeast(1)
                 val rl = Math.sqrt(sl / frames).toFloat(); val rrms = Math.sqrt(sr / frames).toFloat()
                 val e = (rl + rrms) / 2f
@@ -127,7 +132,13 @@ class StereoService : Service() {
                     val tgt = (if (raw < 0f) -m else m).coerceIn(-1f, 1f)
                     smooth += (tgt - smooth) * 0.25f
                     StereoState.pan = smooth
-                } else { smooth *= 0.9f; StereoState.pan = smooth }
+                    val tl = ((hfE - lfE) / (hfE + lfE + 1.0)).toFloat()
+                    tBase += (tl - tBase) * 0.01f
+                    val tm = tl - tBase
+                    val tt = (if (tm < 0f) -Math.max(0f, -tm - 0.06f) else Math.max(0f, tm - 0.06f)) / 0.25f
+                    tSm += (tt.coerceIn(-1f, 1f) - tSm) * 0.25f
+                    StereoState.tilt = tSm
+                } else { smooth *= 0.9f; StereoState.pan = smooth; tSm *= 0.9f; StereoState.tilt = tSm }
                 StereoState.energy = eSm
                 StereoState.lastT = System.currentTimeMillis()
             }
