@@ -558,16 +558,16 @@ class LiquidWallpaper : WallpaperService() {
                     lvel += (30f * (tx - lpos) - 6.5f * lvel) * sdt; lpos += lvel * sdt
                     lvelY += (30f * (ty - lposY) - 6.5f * lvelY) * sdt; lposY += lvelY * sdt
                 }
-                val tnx = tx - lpos; val tny = ty - lposY
+                val tnx = lpos; val tny = lposY
                 val tmag = Math.hypot(tnx.toDouble(), tny.toDouble()).toFloat()
-                val sTarget = (tmag / 0.25f).coerceIn(0f, 1.0f)
+                val sTarget = (tmag / 0.5f).coerceIn(0f, 0.9f)
                 if (tmag > 0.01f) {
                     ldx += (tnx / tmag - ldx) * 0.5f; ldy += (tny / tmag - ldy) * 0.5f
                     val ln = Math.hypot(ldx.toDouble(), ldy.toDouble()).toFloat().coerceAtLeast(1e-3f); ldx /= ln; ldy /= ln
                 }
                 lstretch += (sTarget - lstretch) * 0.4f
                 lbass += ((0.6f * bass + 0.4f * punch.coerceIn(0f, 1f)) - lbass) * 0.25f
-                g.draw(lbass.coerceIn(0f, 1.2f), rPulse.coerceIn(0f, 1f), high.coerceIn(0f, 1f), liqT, lpos, lstretch, fade.coerceIn(0f, 1f), lposY, ldx, ldy)
+                g.draw(lbass.coerceIn(0f, 1.2f), rPulse.coerceIn(0f, 1f), high.coerceIn(0f, 1f), liqT, 0f, lstretch, fade.coerceIn(0f, 1f), 0f, ldx, ldy)
             } catch (e: Throwable) {
                 getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("liquid_error", "render: " + e.message).apply()
                 failed = true; releaseGl()
