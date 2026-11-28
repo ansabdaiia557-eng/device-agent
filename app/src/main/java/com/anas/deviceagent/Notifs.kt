@@ -19,7 +19,7 @@ import android.text.TextDirectionHeuristics
 import android.text.TextPaint
 import android.text.TextUtils
 
-class NItem(val key: String, val app: String, val title: String, val text: String, val time: Long, val icon: Bitmap?)
+class NItem(val key: String, val app: String, val title: String, val text: String, val time: Long, val icon: Bitmap?, val pkg: String = "", val pi: android.app.PendingIntent? = null)
 
 /** Notifications read through the notification listener, drawn by the wallpaper on the lock screen only. */
 object NotifState {
@@ -74,7 +74,7 @@ object NotifState {
                 val text = (ex.getCharSequence(Notification.EXTRA_TEXT) ?: ex.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: "").toString().trim()
                 if (title.isEmpty() && text.isEmpty()) continue
                 val app = try { l.packageManager.getApplicationLabel(l.packageManager.getApplicationInfo(sbn.packageName, 0)).toString() } catch (e: Throwable) { sbn.packageName }
-                list.add(NItem(sbn.key, app, title, text, sbn.postTime, iconFor(l, sbn.packageName)))
+                list.add(NItem(sbn.key, app, title, text, sbn.postTime, iconFor(l, sbn.packageName), sbn.packageName, n.contentIntent))
             }
             list.sortByDescending { it.time }
             items = list.take(12)

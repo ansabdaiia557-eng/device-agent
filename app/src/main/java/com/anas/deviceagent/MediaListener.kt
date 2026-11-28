@@ -15,8 +15,19 @@ import android.service.notification.StatusBarNotification
 class MediaListener : NotificationListenerService() {
     private val h = Handler(Looper.getMainLooper())
     private val sweep = Runnable { sweepMedia() }
+    companion object {
+        @Volatile var inst: MediaListener? = null
+        @Volatile var onChange: (() -> Unit)? = null
+        fun dismiss(key: String) { try { inst?.cancelNotification(key) } catch (e: Throwable) {} }
+    }
     private val rx = object : BroadcastReceiver() {
-        override fun onReceive(c: Context?, i: Intent?) { h.removeCallbacks(sweep); h.postDelayed(sweep, 600) }
+        override fun onReceive(c: Context?, i: Intent?) {
+            h.removeCallbacks(sweep); h.postDelayed(sweep, 600)
+            if (i?.action == Intent.ACTION_SCREEN_OFF && LockSetup.enabled(this@MediaListener)) {
+                Thread { LockAssets.load(this@MediaListener) }.start()
+                LockSetup.show(this@MediaListener, true)
+            }
+        }
     }
 
     private fun hideOn(): Boolean = getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean("wp_hide_stock_media", true)
@@ -36,16 +47,18 @@ class MediaListener : NotificationListenerService() {
     }
 
     override fun onListenerConnected() {
+        inst = this
         NotifState.rebuild(this)
+        Thread { LockAssets.load(this) }.start()
         try {
             val f = IntentFilter(Intent.ACTION_SCREEN_OFF)
             registerReceiver(rx, f)
         } catch (e: Throwable) {}
     }
-    override fun onListenerDisconnected() { try { unregisterReceiver(rx) } catch (e: Throwable) {} }
+    override fun onListenerDisconnected() { inst = null; try { unregisterReceiver(rx) } catch (e: Throwable) {} }
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        NotifState.rebuild(this)
+        NotifState.rebuild(this); onChange?.invoke()
         if (sbn != null && hideOn() && isMedia(sbn)) { h.removeCallbacks(sweep); h.postDelayed(sweep, 350) }
     }
-    override fun onNotificationRemoved(sbn: StatusBarNotification?) { NotifState.rebuild(this) }
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) { NotifState.rebuild(this); onChange?.invoke() }
 }
