@@ -51,12 +51,13 @@ float map(vec3 p0) {
     p.yz *= 1.0 + sa * (0.55 * lead + 0.35);
     p.x /= 1.0 + 0.85 * sa;
     float d = length(p) - (0.44 + 0.035 * uBass);
-    float wob = sin(p.x * 4.6 + t * 0.9) * sin(p.y * 5.1 - t * 0.7) * sin(p.z * 4.0 + t * 0.5);
-    float fine = sin(p.x * 17.0 + t * 5.0) * sin(p.y * 15.0 - t * 4.0);
-    float rip = sin(length(p - vec3(0.17, 0.2, 0.5)) * 38.0 - t * 3.0) * 0.006
-              + sin(length(p - vec3(-0.2, -0.14, 0.5)) * 30.0 + 1.0 - t * 2.0) * 0.005;
+    vec3 q0 = p0;
+    float wob = sin(q0.x * 4.6 + t * 0.9) * sin(q0.y * 5.1 - t * 0.7) * sin(q0.z * 4.0 + t * 0.5);
+    float fine = sin(q0.x * 17.0 + t * 5.0) * sin(q0.y * 15.0 - t * 4.0);
+    float rip = sin(length(q0 - vec3(0.17, 0.2, 0.5)) * 38.0 - t * 3.0) * 0.006
+              + sin(length(q0 - vec3(-0.2, -0.14, 0.5)) * 30.0 + 1.0 - t * 2.0) * 0.005;
     d += (0.010 + 0.007 * uBass) * wob + 0.010 * uHigh * fine
-       + rip * (1.0 + 1.3 * uBeat) * smoothstep(0.8, 0.35, length(p));
+       + rip * (1.0 + 1.3 * uBeat) * smoothstep(0.8, 0.35, length(q0));
     return d * 0.8;
 }
 
@@ -543,14 +544,6 @@ class LiquidWallpaper : WallpaperService() {
                 val sim = 0f
                 var tx = if (!playing) 0f else if (stLive) (StereoState.pan * 0.5f).coerceIn(-0.5f, 0.5f) else sim
                 var ty = if (!playing) 0f else if (stLive) (StereoState.tilt * 0.32f).coerceIn(-0.32f, 0.32f) else sim
-                run {
-                    val mg = Math.hypot(tx.toDouble(), ty.toDouble()).toFloat()
-                    if (mg > 0.02f) {
-                        val q = Math.PI / 4.0
-                        val ang = Math.round(Math.atan2(ty.toDouble(), tx.toDouble()) / q) * q
-                        tx = (mg * Math.cos(ang)).toFloat(); ty = (mg * Math.sin(ang)).toFloat()
-                    }
-                }
                 liqT += dt * (0.5f + 1.2f * rLoud)
                 var left = dt
                 while (left > 0f) {
@@ -561,10 +554,7 @@ class LiquidWallpaper : WallpaperService() {
                 val tnx = lpos; val tny = lposY
                 val tmag = Math.hypot(tnx.toDouble(), tny.toDouble()).toFloat()
                 val sTarget = (tmag / 0.5f).coerceIn(0f, 0.9f)
-                if (tmag > 0.01f) {
-                    ldx += (tnx / tmag - ldx) * 0.5f; ldy += (tny / tmag - ldy) * 0.5f
-                    val ln = Math.hypot(ldx.toDouble(), ldy.toDouble()).toFloat().coerceAtLeast(1e-3f); ldx /= ln; ldy /= ln
-                }
+                if (tmag > 0.012f) { ldx = tnx / tmag; ldy = tny / tmag }
                 lstretch += (sTarget - lstretch) * 0.4f
                 lbass += ((0.6f * bass + 0.4f * punch.coerceIn(0f, 1f)) - lbass) * 0.25f
                 g.draw(lbass.coerceIn(0f, 1.2f), rPulse.coerceIn(0f, 1f), high.coerceIn(0f, 1f), liqT, 0f, lstretch, fade.coerceIn(0f, 1f), 0f, ldx, ldy)
