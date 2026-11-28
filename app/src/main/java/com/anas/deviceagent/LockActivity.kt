@@ -45,15 +45,27 @@ object LockSetup {
     fun startService(c: Context) {
         try { val i = Intent(c, LockService::class.java); if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i) else c.startService(i) } catch (e: Throwable) { log(c, "service start failed: ${e.javaClass.simpleName}") }
     }
+    private fun viaApp(c: Context): Boolean = try {
+        c.startActivity(Intent(c, LockActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION).putExtra("sleep", true))
+        true
+    } catch (e: Throwable) { log(c, "startActivity failed: ${e.javaClass.simpleName} ${e.message?.take(70)}"); false }
+
+    /** Tries the in-app start first (works with the overlay permission), then Shizuku "am start" as a second path. */
     fun show(c: Context, viaShizuku: Boolean) {
-        try {
-            if (viaShizuku && Sh.granted()) {
-                Thread { try { val r = Sh.exec(listOf("am", "start", "-n", "com.anas.deviceagent/.LockActivity", "--ez", "sleep", "true"), 8, 120); log(c, "launch shizuku: " + r.replace("\n", " ").take(90)) } catch (e: Throwable) { log(c, "launch shizuku error ${e.javaClass.simpleName}") } }.start()
-                return
-            }
-            c.startActivity(Intent(c, LockActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("sleep", true))
-            log(c, "launch startActivity sent (no shizuku)")
-        } catch (e: Throwable) { log(c, "launch failed: ${e.javaClass.simpleName} ${e.message?.take(60)}") }
+        val ov = try { android.provider.Settings.canDrawOverlays(c) } catch (e: Throwable) { false }
+        if (ov && viaApp(c)) { log(c, "launched via app (overlay permission)"); return }
+        if (viaShizuku && Sh.granted()) {
+            Thread {
+                try {
+                    val r = Sh.exec(listOf("am", "start", "-n", "com.anas.deviceagent/.LockActivity", "--ez", "sleep", "true"), 8, 300)
+                    val bad = !r.startsWith("exit=0") || r.contains("Exception") || r.contains("Error:")
+                    if (bad && viaApp(c)) log(c, "shizuku failed, app start sent: " + r.replace("\n", " ").take(60))
+                    else log(c, "shizuku: " + r.replace("\n", " ").take(80))
+                } catch (e: Throwable) { viaApp(c); log(c, "shizuku error ${e.javaClass.simpleName}, app start sent") }
+            }.start()
+            return
+        }
+        if (viaApp(c)) log(c, "launched via app (no overlay, no shizuku)")
     }
     /** Grants everything it can through Shizuku. Returns a short report. */
     fun grant(c: Context): String {

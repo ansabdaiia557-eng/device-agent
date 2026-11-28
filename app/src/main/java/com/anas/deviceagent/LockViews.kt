@@ -58,7 +58,7 @@ class LockFigureView(ctx: Context) : View(ctx) {
 
 /** The giant clock with real blurred glass, and the date above it. Static, so it is drawn once a minute. */
 class LockClockView(ctx: Context) : View(ctx) {
-    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL); textSize = 400f }
+    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = try { Typeface.createFromAsset(ctx.assets, "clock_font.otf") } catch (e: Throwable) { Typeface.create("sans-serif-condensed", Typeface.NORMAL) }; textSize = 400f }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val inP = Paint(Paint.FILTER_BITMAP_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN) }
     private val atop = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
