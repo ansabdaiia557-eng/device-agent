@@ -24,7 +24,7 @@ object MusicGate {
             val list = msm.getActiveSessions(ComponentName(ctx, MediaListener::class.java))
             val c = list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: return false
             val pkg = c.packageName.lowercase()
-            if (deny.any { pkg.contains(it) }) return false
+            if (deny.any { pkg.contains(it) } && !pkg.contains("youtube.music")) return false
             val dur = c.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
             // songs are rarely under 45 s; reels, clips and short videos are
             dur <= 0L || dur >= 45000L
