@@ -541,8 +541,8 @@ class LiquidWallpaper : WallpaperService() {
                 // stereo pull with resistance: attraction point = pan, body trails on a soft spring and stretches under tension
                 val stLive = StereoState.live(now)
                 val sim = 0f
-                var tx = if (!playing) 0f else if (stLive) (StereoState.pan * 0.8f).coerceIn(-0.8f, 0.8f) else sim
-                var ty = if (!playing) 0f else if (stLive) (StereoState.tilt * 0.5f).coerceIn(-0.5f, 0.5f) else sim
+                var tx = if (!playing) 0f else if (stLive) (StereoState.pan * 0.5f).coerceIn(-0.5f, 0.5f) else sim
+                var ty = if (!playing) 0f else if (stLive) (StereoState.tilt * 0.32f).coerceIn(-0.32f, 0.32f) else sim
                 run {
                     val mg = Math.hypot(tx.toDouble(), ty.toDouble()).toFloat()
                     if (mg > 0.02f) {
@@ -555,12 +555,12 @@ class LiquidWallpaper : WallpaperService() {
                 var left = dt
                 while (left > 0f) {
                     val sdt = Math.min(left, 0.008f); left -= sdt
-                    lvel += (48f * (tx - lpos) - 8.5f * lvel) * sdt; lpos += lvel * sdt
-                    lvelY += (48f * (ty - lposY) - 8.5f * lvelY) * sdt; lposY += lvelY * sdt
+                    lvel += (30f * (tx - lpos) - 6.5f * lvel) * sdt; lpos += lvel * sdt
+                    lvelY += (30f * (ty - lposY) - 6.5f * lvelY) * sdt; lposY += lvelY * sdt
                 }
                 val tnx = tx - lpos; val tny = ty - lposY
                 val tmag = Math.hypot(tnx.toDouble(), tny.toDouble()).toFloat()
-                val sTarget = (tmag / 0.15f).coerceIn(0f, 1.0f)
+                val sTarget = (tmag / 0.25f).coerceIn(0f, 1.0f)
                 if (tmag > 0.01f) {
                     ldx += (tnx / tmag - ldx) * 0.5f; ldy += (tny / tmag - ldy) * 0.5f
                     val ln = Math.hypot(ldx.toDouble(), ldy.toDouble()).toFloat().coerceAtLeast(1e-3f); ldx /= ln; ldy /= ln
