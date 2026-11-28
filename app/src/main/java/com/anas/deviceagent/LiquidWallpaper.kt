@@ -36,6 +36,7 @@ uniform float uHigh;
 uniform float uPanX;
 uniform float uPanY;
 uniform vec2 uDir;
+uniform vec4 uPull;
 uniform float uFade;
 uniform float uOffY;
 uniform float uStretch;
@@ -44,12 +45,13 @@ float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x *
 
 float map(vec3 p0) {
     float t = uTime;
-    vec3 p = vec3(dot(p0.xy, uDir), -p0.x * uDir.y + p0.y * uDir.x, p0.z);
-    float sa = abs(uStretch);
-    float sg = 1.0;
-    float lead = clamp(p.x * sg / 0.5, -1.0, 1.0);
-    p.yz *= 1.0 + sa * 0.28;
-    p.x /= 1.0 + 0.7 * sa;
+    vec3 p = p0;
+    float sx = mix(uPull.x, uPull.y, smoothstep(-0.12, 0.12, p.x));
+    float sy = mix(uPull.z, uPull.w, smoothstep(-0.12, 0.12, p.y));
+    p.y *= 1.0 + 0.12 * sx;
+    p.x *= 1.0 + 0.12 * sy;
+    p.x /= 1.0 + 0.9 * sx;
+    p.y /= 1.0 + 0.9 * sy;
     float d = length(p) - (0.44 + 0.035 * uBass);
     vec3 q0 = p0;
     float wob = sin(q0.x * 3.0 + t * 0.35) * sin(q0.y * 3.2 - t * 0.3) * sin(q0.z * 2.8 + t * 0.25);
@@ -94,7 +96,7 @@ void main() {
     vec3 ro = vec3(0.0, 0.0, 3.0);
     vec3 rd = normalize(vec3(uv, -0.62));
     vec3 ctr = vec3(uPanX, uPanY, 0.0);
-    float R = 0.44 + 0.035 * uBass + 0.08 + 0.7 * abs(uStretch);
+    float R = 0.44 + 0.035 * uBass + 0.08 + 0.55 * abs(uStretch);
     vec3 oc = ro - ctr;
     float bb = dot(oc, rd);
     float disc = bb * bb - (dot(oc, oc) - R * R);
@@ -255,7 +257,7 @@ class GlLiquid {
         EGL14.eglSwapBuffers(dpy, surf)
     }
 
-    fun draw(bass: Float, beat: Float, high: Float, time: Float, panX: Float, stretch: Float, fade: Float, panY: Float = 0f, dx: Float = 1f, dy: Float = 0f) {
+    fun draw(bass: Float, beat: Float, high: Float, time: Float, panX: Float, stretch: Float, fade: Float, panY: Float = 0f, dx: Float = 1f, dy: Float = 0f, pl: Float = 0f, pr: Float = 0f, pd: Float = 0f, pu: Float = 0f) {
         val a = IntArray(1)
         EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_WIDTH, a, 0); w = a[0]
         EGL14.eglQuerySurface(dpy, surf, EGL14.EGL_HEIGHT, a, 0); h = a[0]
@@ -263,7 +265,7 @@ class GlLiquid {
         GLES20.glUseProgram(prog)
         GLES20.glUniform2f(u("uRes"), w.toFloat(), h.toFloat())
         GLES20.glUniform1f(u("uTime"), time); GLES20.glUniform1f(u("uBass"), bass); GLES20.glUniform1f(u("uBeat"), beat)
-        GLES20.glUniform1f(u("uHigh"), high); GLES20.glUniform1f(u("uPanX"), panX); GLES20.glUniform1f(u("uStretch"), stretch); GLES20.glUniform1f(u("uPanY"), panY); GLES20.glUniform2f(u("uDir"), dx, dy)
+        GLES20.glUniform1f(u("uHigh"), high); GLES20.glUniform1f(u("uPanX"), panX); GLES20.glUniform1f(u("uStretch"), stretch); GLES20.glUniform1f(u("uPanY"), panY); GLES20.glUniform2f(u("uDir"), dx, dy); GLES20.glUniform4f(u("uPull"), pl, pr, pd, pu)
         GLES20.glUniform1f(u("uFade"), fade); GLES20.glUniform1f(u("uOffY"), offY)
         GLES20.glEnableVertexAttribArray(0)
         quad.position(0)
@@ -542,28 +544,17 @@ class LiquidWallpaper : WallpaperService() {
                 // stereo pull with resistance: attraction point = pan, body trails on a soft spring and stretches under tension
                 val stLive = StereoState.live(now)
                 val sim = 0f
-                var tx = if (!playing) 0f else if (stLive) (StereoState.pan * 0.5f).coerceIn(-0.5f, 0.5f) else sim
-                var ty = if (!playing) 0f else if (stLive) (StereoState.tilt * 0.32f).coerceIn(-0.32f, 0.32f) else sim
                 liqT += dt * (0.5f + 1.2f * rLoud)
-                var left = dt
-                while (left > 0f) {
-                    val sdt = Math.min(left, 0.008f); left -= sdt
-                    lvel += (30f * (tx - lpos) - 6.5f * lvel) * sdt; lpos += lvel * sdt
-                    lvelY += (30f * (ty - lposY) - 6.5f * lvelY) * sdt; lposY += lvelY * sdt
-                }
-                val tnx = lpos; val tny = lposY
-                val tmag = Math.hypot(tnx.toDouble(), tny.toDouble()).toFloat()
-                val sTarget = (tmag / 0.5f).coerceIn(0f, 0.55f)
-                if (tmag > 0.03f) {
-                    val w = 0.12f
-                    var nx = ldx + (tnx / tmag - ldx) * w; var ny = ldy + (tny / tmag - ldy) * w
-                    if (ldx * (tnx / tmag) + ldy * (tny / tmag) < -0.2f) { nx = ldx; ny = ldy } // ignore reversals, axis stays; lean fades through round
-                    val ln = Math.hypot(nx.toDouble(), ny.toDouble()).toFloat().coerceAtLeast(1e-3f)
-                    ldx = nx / ln; ldy = ny / ln
-                }
-                lstretch += (sTarget - lstretch) * 0.4f
+                val on = playing && stLive
+                val kk = if (on) 1f else 0f
+                // independent per-side pulls, smoothed (fast rise, slower relax for an elastic feel)
+                val aR = 1f - Math.exp(-dt * 14.0).toFloat(); val aF = 1f - Math.exp(-dt * 6.0).toFloat()
+                fun sm(cur: Float, tg: Float) = cur + (tg - cur) * (if (tg > cur) aR else aF)
+                lvel = sm(lvel, StereoState.sL * kk); lpos = sm(lpos, StereoState.sR * kk)
+                lvelY = sm(lvelY, StereoState.sD * kk); lposY = sm(lposY, StereoState.sU * kk)
+                lstretch = Math.max(Math.max(lvel, lpos), Math.max(lvelY, lposY))
                 lbass += ((0.6f * bass + 0.4f * punch.coerceIn(0f, 1f)) - lbass) * 0.25f
-                g.draw(lbass.coerceIn(0f, 1.2f), rPulse.coerceIn(0f, 1f), high.coerceIn(0f, 1f), liqT, 0f, lstretch, fade.coerceIn(0f, 1f), 0f, ldx, ldy)
+                g.draw(lbass.coerceIn(0f, 1.2f), rPulse.coerceIn(0f, 1f), high.coerceIn(0f, 1f), liqT, 0f, lstretch, fade.coerceIn(0f, 1f), 0f, ldx, ldy, lvel, lpos, lvelY, lposY)
             } catch (e: Throwable) {
                 getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("liquid_error", "render: " + e.message).apply()
                 failed = true; releaseGl()

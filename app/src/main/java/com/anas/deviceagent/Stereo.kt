@@ -25,6 +25,10 @@ import android.widget.Toast
 object StereoState {
     @Volatile var pan = 0f
     @Volatile var tilt = 0f
+    @Volatile var sL = 0f
+    @Volatile var sR = 0f
+    @Volatile var sD = 0f
+    @Volatile var sU = 0f
     @Volatile var lastT = 0L
     @Volatile var energy = 0f
     @Volatile var active = false
@@ -114,6 +118,7 @@ class StereoService : Service() {
             var tSm = 0f
             var tBase = 0f
             var lp = 0.0
+            var pkL = 1f; var pkR = 1f; var pkLo = 1f; var pkHi = 1f
             while (run) {
                 val n = r.read(buf, 0, buf.size)
                 if (n <= 0) { try { Thread.sleep(20) } catch (e: Throwable) {}; continue }
@@ -139,6 +144,16 @@ class StereoService : Service() {
                     tSm += (tt.coerceIn(-1f, 1f) - tSm) * 0.25f
                     StereoState.tilt = tSm
                 } else { smooth *= 0.9f; StereoState.pan = smooth; tSm *= 0.9f; StereoState.tilt = tSm }
+                run {
+                    // per-side pull strengths relative to each band's own slow peak
+                    pkL = Math.max(rl, pkL * 0.998f).coerceAtLeast(200f); pkR = Math.max(rrms, pkR * 0.998f).coerceAtLeast(200f)
+                    val lo = Math.sqrt(lfE / frames).toFloat(); val hi = Math.sqrt(hfE / frames).toFloat()
+                    pkLo = Math.max(lo, pkLo * 0.998f).coerceAtLeast(150f); pkHi = Math.max(hi, pkHi * 0.998f).coerceAtLeast(40f)
+                    fun st(v: Float, pk: Float) = (Math.max(0f, v / pk - 0.5f) / 0.5f).coerceIn(0f, 0.8f)
+                    val g = e > 150f
+                    StereoState.sL = if (g) st(rl, pkL) else 0f; StereoState.sR = if (g) st(rrms, pkR) else 0f
+                    StereoState.sD = if (g) st(lo, pkLo) else 0f; StereoState.sU = if (g) st(hi, pkHi) else 0f
+                }
                 StereoState.energy = eSm
                 StereoState.lastT = System.currentTimeMillis()
             }
