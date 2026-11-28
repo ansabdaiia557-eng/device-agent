@@ -132,7 +132,7 @@ void main() {
         float tmax = -bb + sq;
         float dmin = 1e9; float tmin = tt;
         bool hit = false;
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < 22; i++) {
             float h = map(ro + rd * tt - ctr);
             if (h < dmin) { dmin = h; tmin = tt; }
             if (h < 0.002) { hit = true; break; }
@@ -468,7 +468,7 @@ class LiquidWallpaper : WallpaperService() {
                         for (i in 0 until 32) bands[i] = rawb[i]
                         if (total > 0.05f) lastData = System.currentTimeMillis()
                     }
-                }, Visualizer.getMaxCaptureRate(), false, true)
+                }, Math.min(Visualizer.getMaxCaptureRate(), 12000), false, true)
                 v.enabled = true; viz = v; vizStart = System.currentTimeMillis()
             } catch (e: Throwable) { vizFailed = true; stopViz() }
         }
@@ -511,7 +511,7 @@ class LiquidWallpaper : WallpaperService() {
             scaledLocked = lockedNow; lowBatt = lb
             try {
                 val dm = resources.displayMetrics
-                val f = (if (lockedNow) 0.5f else 0.3f) * (if (lb) 0.75f else 1f)
+                val f = (if (lockedNow) 0.38f else 0.22f) * (if (lb) 0.8f else 1f)
                 surfaceHolder.setFixedSize((dm.widthPixels * f).toInt(), (dm.heightPixels * f).toInt())
             } catch (e: Throwable) {}
         }
@@ -546,7 +546,7 @@ class LiquidWallpaper : WallpaperService() {
             if (!visible) return
             applyScale(NotifState.locked(this@LiquidWallpaper))
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val playing = am.isMusicActive
+            val playing = MusicGate.playing(this@LiquidWallpaper, System.currentTimeMillis())
             val now = System.currentTimeMillis()
             if (playing && !wasPlaying) { playSince = now; idleSince = 0L }
             if (!playing && wasPlaying) idleSince = now
@@ -565,7 +565,7 @@ class LiquidWallpaper : WallpaperService() {
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else "simple"
             render(true, vizLive, now)
-            val target = (if (NotifState.locked(this@LiquidWallpaper)) 33L else 50L) * (if (WpExtras.lowBattery(this@LiquidWallpaper)) 2L else 1L)
+            val target = (if (NotifState.locked(this@LiquidWallpaper)) 42L else 66L) * (if (WpExtras.lowBattery(this@LiquidWallpaper)) 2L else 1L)
             h.postDelayed(tick, Math.max(1L, target - (System.currentTimeMillis() - now)))
         }
 

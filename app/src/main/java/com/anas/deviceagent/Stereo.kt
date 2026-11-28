@@ -157,7 +157,7 @@ class StereoService : Service() {
                 StereoState.energy = eSm
                 StereoState.lastT = System.currentTimeMillis()
             }
-        }.also { it.isDaemon = true; it.start() }
+        }.also { it.isDaemon = true; it.priority = Thread.MIN_PRIORITY; it.start() }
     }
 
     override fun onDestroy() {

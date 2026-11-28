@@ -268,7 +268,7 @@ class MusicWallpaper : WallpaperService() {
         private fun step() {
             if (!visible) return
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val playing = am.isMusicActive
+            val playing = MusicGate.playing(this@MusicWallpaper, System.currentTimeMillis())
             val now = System.currentTimeMillis()
             if (playing && !wasPlaying) { playSince = now; idleSince = 0L }
             if (!playing && wasPlaying) idleSince = now

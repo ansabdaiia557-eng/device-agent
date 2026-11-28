@@ -567,7 +567,7 @@ class RingWallpaper : WallpaperService() {
             if (!visible) return
             applyScale(NotifState.locked(this@RingWallpaper))
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val playing = am.isMusicActive
+            val playing = MusicGate.playing(this@RingWallpaper, System.currentTimeMillis())
             val now = System.currentTimeMillis()
             if (playing && !wasPlaying) { playSince = now; idleSince = 0L }
             if (!playing && wasPlaying) idleSince = now
