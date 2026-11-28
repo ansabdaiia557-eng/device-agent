@@ -39,26 +39,22 @@ uniform float uOffY;
 uniform float uStretch;
 
 float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
-float noise(vec3 x) {
-    vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(mix(h3(i), h3(i + vec3(1.0, 0.0, 0.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 0.0)), h3(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
-               mix(mix(h3(i + vec3(0.0, 0.0, 1.0)), h3(i + vec3(1.0, 0.0, 1.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 1.0)), h3(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z);
-}
 
 float map(vec3 p0) {
     float t = uTime;
     vec3 p = p0;
     float sa = abs(uStretch);
     float sg = uStretch < 0.0 ? -1.0 : 1.0;
-    float lead = clamp(p.x * sg / 0.7, -1.0, 1.0);
+    float lead = clamp(p.x * sg / 0.5, -1.0, 1.0);
     p.yz *= 1.0 + sa * (0.55 * lead + 0.35);
     p.x /= 1.0 + 0.85 * sa;
-    float d = length(p) - (0.64 + 0.05 * uBass);
-    float rip = sin(length(p - vec3(0.25, 0.3, 0.7)) * 26.0 - t * 3.0) * 0.009
-              + sin(length(p - vec3(-0.3, -0.2, 0.7)) * 20.0 + 1.0 - t * 2.0) * 0.007;
-    d += (0.012 + 0.008 * uBass) * (noise(p * 2.2 + vec3(0.0, t * 0.3, 0.0)) - 0.5)
-       + (0.004 + 0.012 * uHigh) * (noise(p * 8.0 + t) - 0.5)
-       + rip * (1.0 + 1.3 * uBeat) * smoothstep(1.0, 0.5, length(p));
+    float d = length(p) - (0.44 + 0.035 * uBass);
+    float wob = sin(p.x * 4.6 + t * 0.9) * sin(p.y * 5.1 - t * 0.7) * sin(p.z * 4.0 + t * 0.5);
+    float fine = sin(p.x * 17.0 + t * 5.0) * sin(p.y * 15.0 - t * 4.0);
+    float rip = sin(length(p - vec3(0.17, 0.2, 0.5)) * 38.0 - t * 3.0) * 0.006
+              + sin(length(p - vec3(-0.2, -0.14, 0.5)) * 30.0 + 1.0 - t * 2.0) * 0.005;
+    d += (0.010 + 0.007 * uBass) * wob + 0.010 * uHigh * fine
+       + rip * (1.0 + 1.3 * uBeat) * smoothstep(0.8, 0.35, length(p));
     return d * 0.8;
 }
 
@@ -73,33 +69,19 @@ vec3 envc(vec3 d) {
     return c;
 }
 
-void main() {
-    vec2 uv = (gl_FragCoord.xy - 0.5 * uRes - vec2(0.0, uOffY)) / uRes.y;
-    float vg = length(uv * vec2(1.0, 0.7));
+vec3 background(vec2 uv, float vg) {
     float t = uTime;
     vec3 bg = vec3(0.018, 0.019, 0.022) + vec3(0.05) * exp(-vg * vg * 6.0) - vec3(0.03) * smoothstep(0.2, 0.9, vg);
-    // light beams
-    for (int k = 0; k < 3; k++) {
-        float fk = float(k);
-        float ang = uv.x + (uv.y - 0.6) * (0.35 - 0.3 * fk);
-        float beam = exp(-pow((ang - (-0.16 + 0.16 * fk)) / (0.05 + 0.03 * fk), 2.0)) * smoothstep(-0.45, 0.55, uv.y)
-                   * (0.5 + 0.5 * noise(vec3(uv * 3.0, fk + t * 0.05)));
-        bg += vec3(0.05, 0.052, 0.056) * beam * (0.7 + 0.3 * fk);
-    }
-    // smoke
-    float sm = noise(vec3(uv * 2.2 + vec2(0.0, 0.5), 1.0 + t * 0.04)) * 0.6 + noise(vec3(uv * 5.0, 3.0 + t * 0.06)) * 0.3;
-    bg += vec3(0.022, 0.023, 0.026) * sm * smoothstep(0.9, 0.1, vg);
+    // one soft light beam
+    float ang = uv.x + (uv.y - 0.6) * 0.1;
+    bg += vec3(0.05, 0.052, 0.056) * exp(-pow((ang + 0.02) / 0.09, 2.0)) * smoothstep(-0.45, 0.55, uv.y) * 0.9;
     // halo rings that breathe with the bass
     float rr = length(uv - vec2(uPanX * 0.2, 0.02));
-    for (int k = 0; k < 7; k++) {
+    for (int k = 0; k < 4; k++) {
         float fk = float(k);
-        float rad = 0.26 + 0.07 * fk * fk * 0.35 + fk * 0.03 + uBass * 0.012 * (fk + 1.0);
+        float rad = 0.22 + 0.05 * fk * fk * 0.5 + fk * 0.06 + uBass * 0.01 * (fk + 1.0);
         bg += vec3(0.5, 0.52, 0.56) * exp(-pow((rr - rad) / 0.0016, 2.0)) * (0.11 / (1.0 + fk * 0.55)) * (1.0 + 0.8 * uBeat);
     }
-    bg += vec3(0.12) * exp(-pow((rr - 0.28) / 0.08, 2.0)) * 0.1;
-    float an = atan(uv.y - 0.02, uv.x - uPanX * 0.2);
-    float tk2 = pow(max(sin(an * 120.0), 0.0), 30.0) * smoothstep(0.015, 0.0, abs(rr - 0.43)) * 0.18;
-    bg += vec3(0.3, 0.31, 0.33) * tk2;
     // glossy floor
     float fy = uv.y + 0.30;
     float ux = uv.x - uPanX * 0.2;
@@ -109,40 +91,35 @@ void main() {
         float dl = length(vec2(ux, depth * 3.2));
         float rp = sin(dl * 70.0 - t * 3.0) * 0.5 + 0.5;
         bg += vec3(0.5, 0.52, 0.56) * pow(rp, 18.0) * exp(-dl * 3.2) * (0.14 + 0.35 * uBeat);
-        for (int k = 1; k < 8; k++) {
-            float fk = float(k);
-            bg += vec3(0.4) * exp(-pow((depth * 3.2 - fk * 0.09) / 0.002, 2.0)) * exp(-pow(ux / (0.15 + fk * 0.14), 2.0)) * 0.06;
-        }
     }
     bg += vec3(0.5) * exp(-pow(fy / 0.002, 2.0)) * exp(-pow(uv.x / 0.45, 2.0)) * 0.12;
-    // dust
-    vec2 gp = uv * vec2(26.0, 56.0) + vec2(0.0, t * 0.4);
-    vec2 gi = floor(gp);
-    float hs = fract(sin(dot(gi, vec2(12.9, 78.2))) * 43758.5);
-    float dust = step(0.93, hs) * smoothstep(0.2, 0.0, length(fract(gp) - 0.5 + 0.25 * vec2(hs, fract(hs * 7.0)) - 0.1)) * (0.4 + 0.6 * fract(hs * 13.0));
-    dust *= 0.6 + 0.4 * sin(t * (0.5 + hs * 4.0) + hs * 40.0);
-    bg += vec3(0.5, 0.52, 0.56) * dust * 0.35 * smoothstep(0.95, 0.2, vg);
+    float cs = exp(-pow(ux / 0.25, 2.0) - pow((uv.y + 0.48) / 0.06, 2.0));
+    bg *= 1.0 - 0.6 * cs;
+    return bg;
+}
 
-    // the liquid ball
+void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5 * uRes - vec2(0.0, uOffY)) / uRes.y;
+    float vg = length(uv * vec2(1.0, 0.7));
     vec3 ro = vec3(0.0, 0.0, 3.0);
     vec3 rd = normalize(vec3(uv, -0.62));
     vec3 ctr = vec3(uPanX, 0.0, 0.0);
-    vec3 col = bg;
-    float R = 0.64 + 0.05 * uBass + 0.1 + 0.8 * abs(uStretch);
+    float R = 0.44 + 0.035 * uBass + 0.08 + 0.7 * abs(uStretch);
     vec3 oc = ro - ctr;
     float bb = dot(oc, rd);
     float disc = bb * bb - (dot(oc, oc) - R * R);
     float cov = 0.0;
+    vec3 c = vec3(0.0);
     if (disc > 0.0) {
         float sq = sqrt(disc);
         float tt = max(0.5, -bb - sq);
         float tmax = -bb + sq;
         float dmin = 1e9; float tmin = tt;
         bool hit = false;
-        for (int i = 0; i < 44; i++) {
+        for (int i = 0; i < 32; i++) {
             float h = map(ro + rd * tt - ctr);
             if (h < dmin) { dmin = h; tmin = tt; }
-            if (h < 0.0015) { hit = true; break; }
+            if (h < 0.002) { hit = true; break; }
             tt += h;
             if (tt > tmax) break;
         }
@@ -151,27 +128,22 @@ void main() {
         if (cov > 0.001) {
             vec3 p = ro + rd * tmin - ctr;
             vec2 k = vec2(1.0, -1.0);
-            float e = 0.002;
+            float e = 0.003;
             vec3 n = normalize(k.xyy * map(p + k.xyy * e) + k.yyx * map(p + k.yyx * e) + k.yxy * map(p + k.yxy * e) + k.xxx * map(p + k.xxx * e));
             float fr = pow(1.0 - max(dot(n, -rd), 0.0), 3.5);
             vec3 refl = envc(reflect(rd, n));
             vec3 ri = refract(rd, n, 0.7);
-            float th = 0.0;
-            vec3 pp = p - n * 0.02;
-            for (int j = 0; j < 3; j++) th += max(-map(pp + ri * float(j) * 0.2), 0.0);
-            vec3 body = vec3(0.012, 0.013, 0.016) + vec3(0.05, 0.053, 0.06) * exp(-th * 3.0) * 0.8;
-            vec3 c = body + refl * (0.10 + 0.9 * fr) * (1.0 + 0.5 * uBeat) + refl * 0.35;
+            float th = max(-map(p - n * 0.02 + ri * 0.12), 0.0) + max(-map(p - n * 0.02 + ri * 0.24), 0.0);
+            vec3 body = vec3(0.012, 0.013, 0.016) + vec3(0.05, 0.053, 0.06) * exp(-th * 4.0) * 0.8;
+            c = body + refl * (0.10 + 0.9 * fr) * (1.0 + 0.5 * uBeat) + refl * 0.35;
             c += vec3(0.5, 0.52, 0.56) * fr * fr * 0.25;
-            col = mix(bg, c, cov);
         }
     }
-    float cs = exp(-pow((uv.x - uPanX * 0.2) / 0.32, 2.0) - pow((uv.y + 0.48) / 0.06, 2.0));
-    col *= 1.0 - 0.7 * cs * (1.0 - cov);
+    vec3 col = c;
+    if (cov < 0.999) col = mix(background(uv, vg), c, cov);
     col *= 1.0 - 0.5 * smoothstep(0.3, 1.0, vg);
-    col += (h3(vec3(gl_FragCoord.xy, fract(t))) - 0.5) * 0.01;
     gl_FragColor = vec4(clamp(col, 0.0, 1.0) * uFade, 1.0);
 }
-
 """
 
 /** Minimal EGL/GLES2 full-screen shader renderer for the glass ring scene. */
@@ -488,7 +460,7 @@ class LiquidWallpaper : WallpaperService() {
             scaledLocked = lockedNow
             try {
                 val dm = resources.displayMetrics
-                val f = if (lockedNow) 0.65f else 0.45f
+                val f = if (lockedNow) 0.5f else 0.3f
                 surfaceHolder.setFixedSize((dm.widthPixels * f).toInt(), (dm.heightPixels * f).toInt())
             } catch (e: Throwable) {}
         }
@@ -516,7 +488,7 @@ class LiquidWallpaper : WallpaperService() {
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else "simple"
             render(true, vizLive, now)
-            val target = if (NotifState.locked(this@LiquidWallpaper)) 16L else 40L
+            val target = if (NotifState.locked(this@LiquidWallpaper)) 33L else 50L
             h.postDelayed(tick, Math.max(1L, target - (System.currentTimeMillis() - now)))
         }
 
@@ -579,8 +551,8 @@ class LiquidWallpaper : WallpaperService() {
                 val fs = form * form * (3f - 2f * form)
                 // stereo pull with resistance: attraction point = pan, body trails on a soft spring and stretches under tension
                 val stLive = StereoState.live(now)
-                val sim = (0.30f * Math.sin(simT * 0.37) + 0.18f * Math.sin(simT * 0.83 + 1.0)).toFloat()
-                val targetPan = if (!playing) 0f else if (stLive) (StereoState.pan * 0.45f).coerceIn(-0.45f, 0.45f) else sim
+                val sim = 0f
+                val targetPan = if (!playing) 0f else if (stLive) (StereoState.pan * 0.38f).coerceIn(-0.38f, 0.38f) else sim
                 liqT += dt * (0.5f + 1.2f * rLoud)
                 var left = dt
                 while (left > 0f) {
