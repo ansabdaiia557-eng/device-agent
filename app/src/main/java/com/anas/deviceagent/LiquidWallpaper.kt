@@ -48,15 +48,15 @@ float map(vec3 p0) {
     float sa = abs(uStretch);
     float sg = 1.0;
     float lead = clamp(p.x * sg / 0.5, -1.0, 1.0);
-    p.yz *= 1.0 + sa * (0.55 * lead + 0.35);
-    p.x /= 1.0 + 0.85 * sa;
+    p.yz *= 1.0 + sa * 0.28;
+    p.x /= 1.0 + 0.7 * sa;
     float d = length(p) - (0.44 + 0.035 * uBass);
     vec3 q0 = p0;
-    float wob = sin(q0.x * 4.6 + t * 0.9) * sin(q0.y * 5.1 - t * 0.7) * sin(q0.z * 4.0 + t * 0.5);
-    float fine = sin(q0.x * 17.0 + t * 5.0) * sin(q0.y * 15.0 - t * 4.0);
-    float rip = sin(length(q0 - vec3(0.17, 0.2, 0.5)) * 38.0 - t * 3.0) * 0.006
-              + sin(length(q0 - vec3(-0.2, -0.14, 0.5)) * 30.0 + 1.0 - t * 2.0) * 0.005;
-    d += (0.010 + 0.007 * uBass) * wob + 0.010 * uHigh * fine
+    float wob = sin(q0.x * 3.0 + t * 0.35) * sin(q0.y * 3.2 - t * 0.3) * sin(q0.z * 2.8 + t * 0.25);
+    float fine = 0.0;
+    float rip = sin(length(q0 - vec3(0.17, 0.2, 0.5)) * 38.0 - t * 3.0) * 0.0015
+              + sin(length(q0 - vec3(-0.2, -0.14, 0.5)) * 30.0 + 1.0 - t * 2.0) * 0.0012;
+    d += (0.004 + 0.004 * uBass) * wob + 0.010 * uHigh * fine
        + rip * (1.0 + 1.3 * uBeat) * smoothstep(0.8, 0.35, length(q0));
     return d * 0.8;
 }
@@ -553,8 +553,14 @@ class LiquidWallpaper : WallpaperService() {
                 }
                 val tnx = lpos; val tny = lposY
                 val tmag = Math.hypot(tnx.toDouble(), tny.toDouble()).toFloat()
-                val sTarget = (tmag / 0.5f).coerceIn(0f, 0.9f)
-                if (tmag > 0.012f) { ldx = tnx / tmag; ldy = tny / tmag }
+                val sTarget = (tmag / 0.5f).coerceIn(0f, 0.55f)
+                if (tmag > 0.03f) {
+                    val w = 0.12f
+                    var nx = ldx + (tnx / tmag - ldx) * w; var ny = ldy + (tny / tmag - ldy) * w
+                    if (ldx * (tnx / tmag) + ldy * (tny / tmag) < -0.2f) { nx = ldx; ny = ldy } // ignore reversals, axis stays; lean fades through round
+                    val ln = Math.hypot(nx.toDouble(), ny.toDouble()).toFloat().coerceAtLeast(1e-3f)
+                    ldx = nx / ln; ldy = ny / ln
+                }
                 lstretch += (sTarget - lstretch) * 0.4f
                 lbass += ((0.6f * bass + 0.4f * punch.coerceIn(0f, 1f)) - lbass) * 0.25f
                 g.draw(lbass.coerceIn(0f, 1.2f), rPulse.coerceIn(0f, 1f), high.coerceIn(0f, 1f), liqT, 0f, lstretch, fade.coerceIn(0f, 1f), 0f, ldx, ldy)
