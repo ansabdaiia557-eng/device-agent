@@ -282,6 +282,11 @@ class MainActivity : Activity() {
                 setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_hide_stock_media", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وشغل موسيقى", Toast.LENGTH_SHORT).show() }
             })
             addView(android.widget.CheckBox(this@MainActivity).apply {
+                text = "وضع البطارية الذكي: يخفف الحركة تلقائيًا لما البطارية تقل عن 20% (كل الخلفيات)"
+                isChecked = prefs.getBoolean("wp_batt_saver", true)
+                setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_batt_saver", on).apply(); Toast.makeText(this@MainActivity, "تم", Toast.LENGTH_SHORT).show() }
+            })
+            addView(android.widget.CheckBox(this@MainActivity).apply {
                 text = "حافة بيضا منوّرة سايحة حوالين الكورة (الزجاج السائل)"
                 isChecked = prefs.getBoolean("wp_liquid_rim", true)
                 setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_liquid_rim", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }

@@ -533,20 +533,34 @@ class RingWallpaper : WallpaperService() {
 
         override fun onCreate(sh: SurfaceHolder) {
             super.onCreate(sh)
+            setTouchEventsEnabled(true)
             applyScale(NotifState.locked(this@RingWallpaper))
         }
 
         private var scaledLocked: Boolean? = null
+        private var lowBatt = false
 
         /** Lock screen: sharper and 60fps. Unlocked (home screen, app drawer): cheaper so the launcher stays smooth. */
         private fun applyScale(lockedNow: Boolean) {
-            if (scaledLocked == lockedNow) return
-            scaledLocked = lockedNow
+            val lb = WpExtras.lowBattery(this@RingWallpaper)
+            if (scaledLocked == lockedNow && lowBatt == lb) return
+            scaledLocked = lockedNow; lowBatt = lb
             try {
                 val dm = resources.displayMetrics
-                val f = if (lockedNow) 0.65f else 0.45f
+                val f = (if (lockedNow) 0.65f else 0.45f) * (if (lb) 0.75f else 1f)
                 surfaceHolder.setFixedSize((dm.widthPixels * f).toInt(), (dm.heightPixels * f).toInt())
             } catch (e: Throwable) {}
+        }
+
+        private fun touchPulse() { punch = 1f; punchV = 0f; h.removeCallbacks(tick); h.post(tick) }
+
+        override fun onTouchEvent(e: android.view.MotionEvent) {
+            if (e.action == android.view.MotionEvent.ACTION_DOWN) touchPulse()
+        }
+
+        override fun onCommand(action: String?, x: Int, y: Int, z: Int, extras: android.os.Bundle?, resultRequested: Boolean): android.os.Bundle? {
+            if (action == "android.wallpaper.tap") touchPulse()
+            return super.onCommand(action, x, y, z, extras, resultRequested)
         }
 
         private fun step() {
@@ -563,7 +577,7 @@ class RingWallpaper : WallpaperService() {
                 bass = 0f; mid = 0f; high = 0f
                 if (now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@RingWallpaper) }
                 render(false, false, now)
-                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 16L else 1000L) else 33L)
+                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 16L else 1000L) else if (WpExtras.lowBattery(this@RingWallpaper)) 66L else 33L)
                 return
             }
             startViz()
@@ -572,7 +586,7 @@ class RingWallpaper : WallpaperService() {
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else "simple"
             render(true, vizLive, now)
-            val target = if (NotifState.locked(this@RingWallpaper)) 16L else 40L
+            val target = (if (NotifState.locked(this@RingWallpaper)) 16L else 40L) * (if (WpExtras.lowBattery(this@RingWallpaper)) 2L else 1L)
             h.postDelayed(tick, Math.max(1L, target - (System.currentTimeMillis() - now)))
         }
 

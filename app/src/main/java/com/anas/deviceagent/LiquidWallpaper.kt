@@ -38,6 +38,8 @@ uniform float uPanY;
 uniform vec2 uDir;
 uniform vec4 uPull;
 uniform float uRim;
+uniform vec4 uTouch;
+uniform float uShat;
 uniform sampler2D uTex;
 uniform float uFade;
 uniform float uOffY;
@@ -45,6 +47,7 @@ uniform float uStretch;
 
 float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 
+float smin(float a, float b, float k) { float hh = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, hh) - k * hh * (1.0 - hh); }
 float p0r;
 float map(vec3 p0) {
     p0r = 0.0;
@@ -64,6 +67,20 @@ float map(vec3 p0) {
               + sin(length(q0 - vec3(-0.2, -0.14, 0.5)) * 30.0 + 1.0 - t * 2.0) * 0.0012;
     d += (0.004 + 0.004 * uBass) * wob + 0.010 * uHigh * fine
        + rip * (1.0 + 1.3 * uBeat) * smoothstep(0.8, 0.35, length(q0));
+    if (uTouch.w > 0.01) {
+        float td = length(p0.xy - uTouch.xy);
+        d += uTouch.w * 0.03 * sin(td * 18.0 - uTouch.z * 9.0) * exp(-td * 2.2);
+    }
+    if (uShat > 0.01) {
+        d += 0.05 * uShat;
+        for (int i = 0; i < 6; i++) {
+            float fi = float(i);
+            float a = fi * 1.0472 + 0.5 + 0.4 * sin(fi * 3.7);
+            float dist = (0.62 + 0.22 * fract(sin(fi * 12.9898) * 43758.5)) * uShat;
+            vec3 dp = vec3(cos(a), sin(a), 0.0) * dist;
+            d = smin(d, length(p0 - dp) - 0.07, 0.07);
+        }
+    }
     return d * 0.8;
 }
 
@@ -80,7 +97,9 @@ vec3 envc(vec3 d) {
 
 vec3 background(vec2 uv, float vg) {
     float t = uTime;
-    vec3 bg = vec3(0.018, 0.019, 0.022) + vec3(0.05) * exp(-vg * vg * 6.0) - vec3(0.03) * smoothstep(0.2, 0.9, vg);
+    vec3 bgt = vec3(0.0);
+    if (uTouch.w > 0.01) { float tr = length(uv - uTouch.xy / 4.84); bgt = vec3(0.5, 0.52, 0.56) * 0.10 * uTouch.w * exp(-pow((tr - uTouch.z * 0.12) / 0.012, 2.0)); }
+    vec3 bg = bgt + vec3(0.018, 0.019, 0.022) + vec3(0.05) * exp(-vg * vg * 6.0) - vec3(0.03) * smoothstep(0.2, 0.9, vg);
     // one soft light beam
     float ang = uv.x + (uv.y - 0.6) * 0.1;
     bg += vec3(0.05, 0.052, 0.056) * exp(-pow((ang + 0.02) / 0.09, 2.0)) * smoothstep(-0.45, 0.55, uv.y) * 0.9;
@@ -100,7 +119,7 @@ void main() {
     vec3 ro = vec3(0.0, 0.0, 3.0);
     vec3 rd = normalize(vec3(uv, -0.62));
     vec3 ctr = vec3(uPanX, uPanY, 0.0);
-    float R = 0.44 + 0.035 * uBass + 0.08 + 0.55 * abs(uStretch) + 0.08 * uRim;
+    float R = 0.44 + 0.035 * uBass + 0.08 + 0.55 * abs(uStretch) + 0.08 * uRim + 0.55 * uShat;
     vec3 oc = ro - ctr;
     float bb = dot(oc, rd);
     float disc = bb * bb - (dot(oc, oc) - R * R);
@@ -223,6 +242,7 @@ class GlLiquid {
     private val quad = ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)); position(0) }
     var w = 0; var h = 0
     var rim = 1f
+    var tx = 0f; var ty = 0f; var tz = 0f; var tw = 0f; var shat = 0f
 
     fun init(surface: Surface): Boolean {
         try {
@@ -295,7 +315,7 @@ class GlLiquid {
         GLES20.glUniform2f(u("uRes"), w.toFloat(), h.toFloat())
         GLES20.glUniform1f(u("uTime"), time); GLES20.glUniform1f(u("uBass"), bass); GLES20.glUniform1f(u("uBeat"), beat)
         GLES20.glUniform1f(u("uHigh"), high); GLES20.glUniform1f(u("uPanX"), panX); GLES20.glUniform1f(u("uStretch"), stretch); GLES20.glUniform1f(u("uPanY"), panY); GLES20.glUniform2f(u("uDir"), dx, dy); GLES20.glUniform4f(u("uPull"), pl, pr, pd, pu)
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex); GLES20.glUniform1i(u("uTex"), 0); GLES20.glUniform1f(u("uRim"), rim)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex); GLES20.glUniform1i(u("uTex"), 0); GLES20.glUniform1f(u("uRim"), rim); GLES20.glUniform4f(u("uTouch"), tx, ty, tz, tw); GLES20.glUniform1f(u("uShat"), shat)
         GLES20.glUniform1f(u("uFade"), fade); GLES20.glUniform1f(u("uOffY"), offY)
         GLES20.glEnableVertexAttribArray(0)
         quad.position(0)
@@ -389,6 +409,9 @@ class LiquidWallpaper : WallpaperService() {
         private var form = 0f; private var shown = ""; private var want = ""
         private var blackIdle = true
         private var rimOn = true
+        private var shatStart = 0L
+        private var touchT0 = 0L; private var touchWx = 0f; private var touchWy = 0f
+        private var lowBatt = false
         private var simT = 0f
         private var liqT = 0f; private var lpos = 0f; private var lposY = 0f; private var lvelY = 0f; private var ldx = 1f; private var ldy = 0f; private var lvel = 0f; private var lstretch = 0f; private var lbass = 0f
         private val tick = Runnable { step() }
@@ -466,6 +489,7 @@ class LiquidWallpaper : WallpaperService() {
             bassAvg = bassAvg * 0.96f + bass * 0.04f
             val strong = bass > 0.4f && bass > bassAvg * 1.45f
             if (strong) punchV += 0.6f * bass
+            if (strong && bass > 0.6f && now - shatStart > 3500L) shatStart = now
             punchV += -punch * 0.22f; punchV *= 0.82f; punch += punchV
         }
 
@@ -473,6 +497,7 @@ class LiquidWallpaper : WallpaperService() {
 
         override fun onCreate(sh: SurfaceHolder) {
             super.onCreate(sh)
+            setTouchEventsEnabled(true)
             applyScale(NotifState.locked(this@LiquidWallpaper))
         }
 
@@ -480,13 +505,32 @@ class LiquidWallpaper : WallpaperService() {
 
         /** Lock screen: sharper and 60fps. Unlocked (home screen, app drawer): cheaper so the launcher stays smooth. */
         private fun applyScale(lockedNow: Boolean) {
-            if (scaledLocked == lockedNow) return
-            scaledLocked = lockedNow
+            val lb = WpExtras.lowBattery(this@LiquidWallpaper)
+            if (scaledLocked == lockedNow && lowBatt == lb) return
+            scaledLocked = lockedNow; lowBatt = lb
             try {
                 val dm = resources.displayMetrics
-                val f = if (lockedNow) 0.5f else 0.3f
+                val f = (if (lockedNow) 0.5f else 0.3f) * (if (lb) 0.75f else 1f)
                 surfaceHolder.setFixedSize((dm.widthPixels * f).toInt(), (dm.heightPixels * f).toInt())
             } catch (e: Throwable) {}
+        }
+
+        private fun touchAt(x: Float, y: Float) {
+            val dm = resources.displayMetrics
+            val hh = dm.heightPixels.toFloat().coerceAtLeast(1f)
+            touchWx = (x - dm.widthPixels / 2f) / hh * 4.84f
+            touchWy = (hh / 2f - y) / hh * 4.84f
+            touchT0 = System.currentTimeMillis()
+            h.removeCallbacks(tick); h.post(tick)
+        }
+
+        override fun onTouchEvent(e: android.view.MotionEvent) {
+            if (e.action == android.view.MotionEvent.ACTION_DOWN) touchAt(e.x, e.y)
+        }
+
+        override fun onCommand(action: String?, x: Int, y: Int, z: Int, extras: android.os.Bundle?, resultRequested: Boolean): android.os.Bundle? {
+            if (action == "android.wallpaper.tap") touchAt(x.toFloat(), y.toFloat())
+            return super.onCommand(action, x, y, z, extras, resultRequested)
         }
 
         private fun step() {
@@ -503,7 +547,7 @@ class LiquidWallpaper : WallpaperService() {
                 bass = 0f; mid = 0f; high = 0f
                 if (now - lastMeta > 3000) { lastMeta = now; MusicState.refresh(this@LiquidWallpaper) }
                 render(false, false, now)
-                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 16L else 1000L) else 33L)
+                h.postDelayed(tick, if (blackIdle) (if (idleSince > 0L && now - idleSince < 1700L) 16L else 1000L) else if (WpExtras.lowBattery(this@LiquidWallpaper)) 66L else 33L)
                 return
             }
             startViz()
@@ -512,7 +556,7 @@ class LiquidWallpaper : WallpaperService() {
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else "simple"
             render(true, vizLive, now)
-            val target = if (NotifState.locked(this@LiquidWallpaper)) 33L else 50L
+            val target = (if (NotifState.locked(this@LiquidWallpaper)) 33L else 50L) * (if (WpExtras.lowBattery(this@LiquidWallpaper)) 2L else 1L)
             h.postDelayed(tick, Math.max(1L, target - (System.currentTimeMillis() - now)))
         }
 
@@ -554,6 +598,12 @@ class LiquidWallpaper : WallpaperService() {
                 rOff += ((if (hasCards) 0.075f * sh else 0f) - rOff) * 0.1f
                 g.offY = rOff
                 g.rim = if (rimOn) 1f else 0f
+                run {
+                    val age = (now - touchT0) / 1000f
+                    if (touchT0 > 0L && age < 2.4f) { g.tx = touchWx; g.ty = touchWy; g.tz = age; g.tw = Math.exp(-age * 1.5).toFloat() } else g.tw = 0f
+                    val su = (now - shatStart) / 1000f / 1.3f
+                    g.shat = if (shatStart > 0L && su in 0f..1f && playing) (Math.sin(Math.PI * su).toFloat().let { it * Math.sqrt(it.toDouble()).toFloat() }) * 0.95f else 0f
+                }
                 if (!playing && blackIdle && (idleSince == 0L || now - idleSince >= 1600L)) { g.black(); return }
                 val fade = if (!playing && blackIdle) 1f - (now - idleSince) / 1600f else if (playing && playSince > 0L && now - playSince < 1000L) (now - playSince) / 1000f else 1f
                 val dt = if (lastNow == 0L) 0.033f else ((now - lastNow) / 1000f).coerceIn(0.004f, 0.1f)

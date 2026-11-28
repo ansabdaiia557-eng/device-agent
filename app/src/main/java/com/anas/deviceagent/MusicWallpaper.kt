@@ -288,7 +288,7 @@ class MusicWallpaper : WallpaperService() {
             if (viz != null && !vizLive && now - vizStart > 4000) { stopViz(); vizStart = now; vizFailed = false }
             MusicState.mode = if (vizLive) "visualizer" else if (MusicState.art != null) "cover" else "simple"
             draw(true, vizLive, now)
-            h.postDelayed(tick, 33)
+            h.postDelayed(tick, if (WpExtras.lowBattery(this@MusicWallpaper)) 66L else 33L)
         }
 
         private fun avg(a: FloatArray, from: Int, to: Int): Float { var s = 0f; for (i in from until to) s += a[i]; return s / (to - from) }
