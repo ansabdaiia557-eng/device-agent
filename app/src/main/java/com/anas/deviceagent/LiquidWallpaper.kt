@@ -82,19 +82,6 @@ vec3 background(vec2 uv, float vg) {
         float rad = 0.22 + 0.05 * fk * fk * 0.5 + fk * 0.06 + uBass * 0.01 * (fk + 1.0);
         bg += vec3(0.5, 0.52, 0.56) * exp(-pow((rr - rad) / 0.0016, 2.0)) * (0.11 / (1.0 + fk * 0.55)) * (1.0 + 0.8 * uBeat);
     }
-    // glossy floor
-    float fy = uv.y + 0.30;
-    float ux = uv.x - uPanX * 0.2;
-    if (fy < 0.0) {
-        float depth = -fy;
-        bg += vec3(0.7, 0.72, 0.76) * exp(-depth * 5.0) * 0.07 * exp(-pow(ux / (0.2 + depth * 1.2), 2.0));
-        float dl = length(vec2(ux, depth * 3.2));
-        float rp = sin(dl * 70.0 - t * 3.0) * 0.5 + 0.5;
-        bg += vec3(0.5, 0.52, 0.56) * pow(rp, 18.0) * exp(-dl * 3.2) * (0.14 + 0.35 * uBeat);
-    }
-    bg += vec3(0.5) * exp(-pow(fy / 0.002, 2.0)) * exp(-pow(uv.x / 0.45, 2.0)) * 0.12;
-    float cs = exp(-pow(ux / 0.25, 2.0) - pow((uv.y + 0.48) / 0.06, 2.0));
-    bg *= 1.0 - 0.6 * cs;
     return bg;
 }
 
@@ -552,16 +539,16 @@ class LiquidWallpaper : WallpaperService() {
                 // stereo pull with resistance: attraction point = pan, body trails on a soft spring and stretches under tension
                 val stLive = StereoState.live(now)
                 val sim = 0f
-                val targetPan = if (!playing) 0f else if (stLive) (StereoState.pan * 0.58f).coerceIn(-0.58f, 0.58f) else sim
+                val targetPan = if (!playing) 0f else if (stLive) (StereoState.pan * 0.8f).coerceIn(-0.8f, 0.8f) else sim
                 liqT += dt * (0.5f + 1.2f * rLoud)
                 var left = dt
                 while (left > 0f) {
                     val sdt = Math.min(left, 0.008f); left -= sdt
-                    val acc = 34f * (targetPan - lpos) - 8f * lvel
+                    val acc = 48f * (targetPan - lpos) - 8.5f * lvel
                     lvel += acc * sdt; lpos += lvel * sdt
                 }
                 val tension = (targetPan - lpos)
-                val sTarget = (tension / 0.22f).coerceIn(-0.85f, 0.85f)
+                val sTarget = (tension / 0.15f).coerceIn(-1.0f, 1.0f)
                 lstretch += (sTarget - lstretch) * 0.4f
                 lbass += ((0.6f * bass + 0.4f * punch.coerceIn(0f, 1f)) - lbass) * 0.25f
                 g.draw(lbass.coerceIn(0f, 1.2f), rPulse.coerceIn(0f, 1f), high.coerceIn(0f, 1f), liqT, lpos, lstretch, fade.coerceIn(0f, 1f))
