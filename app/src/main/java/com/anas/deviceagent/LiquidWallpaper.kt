@@ -54,12 +54,6 @@ float map(vec3 p0) {
     float sy = mix(uPull.z, uPull.w, smoothstep(-0.12, 0.12, p.y));
     p.y *= 1.0 + 0.12 * sx;
     p.x *= 1.0 + 0.12 * sy;
-    if (uRim > 0.5) {
-        float ax = abs(p0.x); float ay = abs(p0.y);
-        float w = 1.0 - abs(ax - ay) / (ax + ay + 0.001);
-        w *= w;
-        p0r = 0.12 * (sx * sy + 0.15 * (sx + sy)) * w;
-    }
     p.x /= 1.0 + 0.9 * sx;
     p.y /= 1.0 + 0.9 * sy;
     float d = length(p) - (0.44 + 0.035 * uBass) + p0r;
@@ -106,12 +100,13 @@ void main() {
     vec3 ro = vec3(0.0, 0.0, 3.0);
     vec3 rd = normalize(vec3(uv, -0.62));
     vec3 ctr = vec3(uPanX, uPanY, 0.0);
-    float R = 0.44 + 0.035 * uBass + 0.08 + 0.55 * abs(uStretch);
+    float R = 0.44 + 0.035 * uBass + 0.08 + 0.55 * abs(uStretch) + 0.08 * uRim;
     vec3 oc = ro - ctr;
     float bb = dot(oc, rd);
     float disc = bb * bb - (dot(oc, oc) - R * R);
     float cov = 0.0;
     vec3 c = vec3(0.0);
+    float rimv = 0.0;
     if (disc > 0.0) {
         float sq = sqrt(disc);
         float tt = max(0.5, -bb - sq);
@@ -127,6 +122,11 @@ void main() {
         }
         float px = tmin * 1.2 / uRes.y;
         cov = hit ? 1.0 : (1.0 - smoothstep(0.0, px * 1.3, dmin));
+        if (uRim > 0.5 && !hit) {
+            float ang = atan(uv.y, uv.x);
+            float off = 0.05 + 0.013 * sin(ang * 3.0 + uTime * 1.1 + uBass) + 0.009 * sin(ang * 7.0 - uTime * 1.6) + 0.006 * sin(ang * 11.0 + uTime * 2.3);
+            rimv = exp(-pow((dmin - off) / 0.011, 2.0)) * 0.42 + exp(-dmin * 11.0) * 0.10;
+        }
         if (cov > 0.001) {
             vec3 p = ro + rd * tmin - ctr;
             vec2 k = vec2(1.0, -1.0);
@@ -142,9 +142,9 @@ void main() {
         }
     }
     vec3 col = c;
-    if (cov < 0.999) col = mix(background(uv, vg), c, cov);
+    if (cov < 0.999) col = mix(background(uv, vg) + vec3(0.78, 0.8, 0.86) * rimv, c, cov);
     col *= 1.0 - 0.5 * smoothstep(0.3, 1.0, vg);
-    vec2 tc = vec2(uv.x / 0.21 + 0.5, (uv.y - 0.455) / 0.07 + 0.5);
+    vec2 tc = vec2(uv.x / 0.30 + 0.5, (uv.y - 0.225) / 0.10 + 0.5);
     if (tc.x > 0.0 && tc.x < 1.0 && tc.y > 0.0 && tc.y < 1.0) {
         float m = texture2D(uTex, tc).r;
         vec2 e = vec2(1.6 / 576.0, 1.6 / 192.0);

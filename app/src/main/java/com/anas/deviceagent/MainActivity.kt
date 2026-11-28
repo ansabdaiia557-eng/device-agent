@@ -282,7 +282,7 @@ class MainActivity : Activity() {
                 setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_hide_stock_media", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وشغل موسيقى", Toast.LENGTH_SHORT).show() }
             })
             addView(android.widget.CheckBox(this@MainActivity).apply {
-                text = "حواف حرف U الناعمة بين السحبات (الزجاج السائل)"
+                text = "حافة بيضا منوّرة سايحة حوالين الكورة (الزجاج السائل)"
                 isChecked = prefs.getBoolean("wp_liquid_rim", true)
                 setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("wp_liquid_rim", on).apply(); Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show() }
             })
