@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <application
         android:label="Device Agent"
@@ -34,6 +37,19 @@
             </intent-filter>
             <meta-data android:name="android.service.wallpaper" android:resource="@xml/wallpaper" />
         </service>
+        <service android:name=".LiquidWallpaper"
+            android:label="@string/wp_liquid_name"
+            android:exported="true"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data android:name="android.service.wallpaper" android:resource="@xml/wallpaper" />
+        </service>
+        <activity android:name=".StereoActivity" android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true" />
+        <service android:name=".StereoService" android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
         <service android:name=".MusicWallpaper"
             android:label="@string/wp_name"
             android:exported="true"

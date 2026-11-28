@@ -233,7 +233,7 @@ class MainActivity : Activity() {
             setOnClickListener {
                 prefs.edit().putString("wp_scene", v).apply()
                 val cur = try { WallpaperManager.getInstance(this@MainActivity).wallpaperInfo?.serviceInfo?.name } catch (e: Exception) { null }
-                if (cur != null && cur.endsWith("RingWallpaper")) pickLive(MusicWallpaper::class.java)
+                if (cur != null && (cur.endsWith("RingWallpaper") || cur.endsWith("LiquidWallpaper"))) pickLive(MusicWallpaper::class.java)
                 else Toast.makeText(this@MainActivity, "تم، اقفل الشاشة وافتحها", Toast.LENGTH_SHORT).show()
             }
         }
@@ -252,6 +252,15 @@ class MainActivity : Activity() {
                 addView(sceneBtn("مشهد: الأكواد", "code"), LinearLayout.LayoutParams(0, -2, 1f))
             })
             addView(ringBtn)
+            addView(Button(this@MainActivity).apply { text = "مشهد: الزجاج السائل الأسود 🖤"; setOnClickListener { pickLive(LiquidWallpaper::class.java) } })
+            addView(Button(this@MainActivity).apply {
+                text = "تفعيل الاستيريو الحقيقي للسائل (إذن تسجيل الصوت الداخلي)"
+                setOnClickListener { startActivity(Intent(this@MainActivity, StereoActivity::class.java)) }
+            })
+            addView(Button(this@MainActivity).apply {
+                text = "إيقاف الاستيريو الحقيقي"
+                setOnClickListener { try { startService(Intent(this@MainActivity, StereoService::class.java).setAction("stop")) } catch (e: Throwable) {}; Toast.makeText(this@MainActivity, "اتوقف", Toast.LENGTH_SHORT).show() }
+            })
             addView(android.widget.CheckBox(this@MainActivity).apply {
                 text = "خلفية سودا لما مفيش حاجة شغالة"
                 isChecked = prefs.getBoolean("wp_black_idle", true)

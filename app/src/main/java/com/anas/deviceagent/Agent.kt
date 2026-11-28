@@ -33,7 +33,7 @@ object Agent {
     }
 
     private const val SYSTEM = """You control an Android phone for the user. Reply with ONE JSON object only:
-{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|set_wallpaper_scene|set_wallpaper_fly|set_wallpaper_idle_black|set_wallpaper_skip|set_wallpaper_lock_notifs|now_playing|list_apps|done|fail", "filter": "", "path": "", "scene": "moon|code|image|ring", "on": true, "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
+{"thought": "short", "action": "shell|script|set_wallpaper|wallpaper_base|set_wallpaper_style|reset_wallpaper_style|set_wallpaper_scene|set_wallpaper_fly|set_wallpaper_idle_black|set_wallpaper_skip|set_wallpaper_lock_notifs|now_playing|list_apps|done|fail", "filter": "", "path": "", "scene": "moon|code|image|ring|liquid", "on": true, "which": "home|lock|both", "dim": 0.0, "blur": 0.0, "tint": "#rrggbb", "caption": "", "command": "...", "commands": ["cmd1","cmd2"], "message": "..."}
 PREFER "shell": it runs invisibly in the background as the Android shell user (screen does not move). Put one command in "command" (no pipes, no redirects, no && or ;). Examples:
 - airplane mode: cmd connectivity airplane-mode enable|disable
 - Wi-Fi: svc wifi enable|disable   (if that fails: cmd wifi set-wifi-enabled enabled|disabled)
@@ -196,6 +196,12 @@ Rules: Never enter passwords or payment details, never send money or messages un
     private fun setWallpaperScene(j: JSONObject): String {
         val ctx = appCtx ?: return "error: no context"
         val sc = j.optString("scene").lowercase().trim()
+        if (sc.contains("liquid") || sc.contains("سائل")) {
+            val intent = android.content.Intent(android.app.WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+                .putExtra(android.app.WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, android.content.ComponentName(ctx, LiquidWallpaper::class.java))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            return try { ctx.startActivity(intent); "ok: opened the wallpaper picker for black liquid glass. Tell the user to tap set wallpaper." } catch (e: Exception) { "ok: could not open the picker from here. Tell the user to tap the black liquid scene button in the Wallpaper tab." }
+        }
         if (sc.contains("ring") || sc.contains("حلق") || sc.contains("زجاج") || sc.contains("glass")) {
             val intent = android.content.Intent(android.app.WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
                 .putExtra(android.app.WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, android.content.ComponentName(ctx, RingWallpaper::class.java))
