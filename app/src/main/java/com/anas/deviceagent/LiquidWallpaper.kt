@@ -37,22 +37,32 @@ uniform float uPanX;
 uniform float uPanY;
 uniform vec2 uDir;
 uniform vec4 uPull;
+uniform float uRim;
+uniform sampler2D uTex;
 uniform float uFade;
 uniform float uOffY;
 uniform float uStretch;
 
 float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 
+float p0r;
 float map(vec3 p0) {
+    p0r = 0.0;
     float t = uTime;
     vec3 p = p0;
     float sx = mix(uPull.x, uPull.y, smoothstep(-0.12, 0.12, p.x));
     float sy = mix(uPull.z, uPull.w, smoothstep(-0.12, 0.12, p.y));
     p.y *= 1.0 + 0.12 * sx;
     p.x *= 1.0 + 0.12 * sy;
+    if (uRim > 0.5) {
+        float ax = abs(p0.x); float ay = abs(p0.y);
+        float w = 1.0 - abs(ax - ay) / (ax + ay + 0.001);
+        w *= w;
+        p0r = 0.12 * (sx * sy + 0.15 * (sx + sy)) * w;
+    }
     p.x /= 1.0 + 0.9 * sx;
     p.y /= 1.0 + 0.9 * sy;
-    float d = length(p) - (0.44 + 0.035 * uBass);
+    float d = length(p) - (0.44 + 0.035 * uBass) + p0r;
     vec3 q0 = p0;
     float wob = sin(q0.x * 3.0 + t * 0.35) * sin(q0.y * 3.2 - t * 0.3) * sin(q0.z * 2.8 + t * 0.25);
     float fine = 0.0;
@@ -134,6 +144,19 @@ void main() {
     vec3 col = c;
     if (cov < 0.999) col = mix(background(uv, vg), c, cov);
     col *= 1.0 - 0.5 * smoothstep(0.3, 1.0, vg);
+    vec2 tc = vec2(uv.x / 0.21 + 0.5, (uv.y - 0.455) / 0.07 + 0.5);
+    if (tc.x > 0.0 && tc.x < 1.0 && tc.y > 0.0 && tc.y < 1.0) {
+        float m = texture2D(uTex, tc).r;
+        vec2 e = vec2(1.6 / 576.0, 1.6 / 192.0);
+        float gx = texture2D(uTex, tc + vec2(e.x, 0.0)).r - texture2D(uTex, tc - vec2(e.x, 0.0)).r;
+        float gy = texture2D(uTex, tc + vec2(0.0, e.y)).r - texture2D(uTex, tc - vec2(0.0, e.y)).r;
+        float edge = clamp(length(vec2(gx, gy)) * 3.2, 0.0, 1.0);
+        float inside = smoothstep(0.3, 0.6, m);
+        col += vec3(0.5, 0.52, 0.56) * m * 0.03;
+        vec3 glass = vec3(0.012, 0.014, 0.018) + vec3(0.03, 0.034, 0.04) * (1.0 - tc.y) * inside;
+        glass += vec3(0.55, 0.58, 0.63) * edge * (0.45 + 0.5 * clamp(-gy * 4.0 + 0.3, 0.0, 1.0));
+        col = mix(col, glass, inside);
+    }
     gl_FragColor = vec4(clamp(col, 0.0, 1.0) * uFade, 1.0);
 }
 """
@@ -195,6 +218,7 @@ class GlLiquid {
     }
     private val quad = ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)); position(0) }
     var w = 0; var h = 0
+    var rim = 1f
 
     fun init(surface: Surface): Boolean {
         try {
@@ -226,6 +250,7 @@ class GlLiquid {
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
             GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1)
             GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_LUMINANCE, TW, TH, 0, GLES20.GL_LUMINANCE, GLES20.GL_UNSIGNED_BYTE, ByteBuffer.allocateDirect(TW * TH))
+            setTitle(titleMap("Anas"))
             return true
         } catch (e: Throwable) { error = "init: " + e.message; return false }
     }
@@ -266,6 +291,7 @@ class GlLiquid {
         GLES20.glUniform2f(u("uRes"), w.toFloat(), h.toFloat())
         GLES20.glUniform1f(u("uTime"), time); GLES20.glUniform1f(u("uBass"), bass); GLES20.glUniform1f(u("uBeat"), beat)
         GLES20.glUniform1f(u("uHigh"), high); GLES20.glUniform1f(u("uPanX"), panX); GLES20.glUniform1f(u("uStretch"), stretch); GLES20.glUniform1f(u("uPanY"), panY); GLES20.glUniform2f(u("uDir"), dx, dy); GLES20.glUniform4f(u("uPull"), pl, pr, pd, pu)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex); GLES20.glUniform1i(u("uTex"), 0); GLES20.glUniform1f(u("uRim"), rim)
         GLES20.glUniform1f(u("uFade"), fade); GLES20.glUniform1f(u("uOffY"), offY)
         GLES20.glEnableVertexAttribArray(0)
         quad.position(0)
@@ -358,6 +384,7 @@ class LiquidWallpaper : WallpaperService() {
         private var rT = 0f; private var rScale = 1f; private var rLoud = 0f; private var rSpin = 0f; private var rPulse = 0f
         private var form = 0f; private var shown = ""; private var want = ""
         private var blackIdle = true
+        private var rimOn = true
         private var simT = 0f
         private var liqT = 0f; private var lpos = 0f; private var lposY = 0f; private var lvelY = 0f; private var ldx = 1f; private var ldy = 0f; private var lvel = 0f; private var lstretch = 0f; private var lbass = 0f
         private val tick = Runnable { step() }
@@ -367,6 +394,7 @@ class LiquidWallpaper : WallpaperService() {
             h.removeCallbacks(tick)
             if (v) {
                 blackIdle = getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean("wp_black_idle", true)
+                rimOn = getSharedPreferences("prefs", Context.MODE_PRIVATE).getBoolean("wp_liquid_rim", true)
                 failed = false
                 h.post(tick)
             } else { stopViz(); releaseGl() }
@@ -521,6 +549,7 @@ class LiquidWallpaper : WallpaperService() {
                 } else if (ovKey != 0) { g.setOverlay(null, 0f); ovKey = 0 }
                 rOff += ((if (hasCards) 0.075f * sh else 0f) - rOff) * 0.1f
                 g.offY = rOff
+                g.rim = if (rimOn) 1f else 0f
                 if (!playing && blackIdle && (idleSince == 0L || now - idleSince >= 1600L)) { g.black(); return }
                 val fade = if (!playing && blackIdle) 1f - (now - idleSince) / 1600f else if (playing && playSince > 0L && now - playSince < 1000L) (now - playSince) / 1000f else 1f
                 val dt = if (lastNow == 0L) 0.033f else ((now - lastNow) / 1000f).coerceIn(0.004f, 0.1f)
