@@ -28,7 +28,7 @@ object StereoState {
     @Volatile var energy = 0f
     @Volatile var active = false
     @Volatile var error = ""
-    fun live(now: Long): Boolean = active && now - lastT < 900L && energy > 300f
+    fun live(now: Long): Boolean = active && now - lastT < 900L && energy > 100f
 }
 
 class StereoActivity : Activity() {
@@ -120,12 +120,12 @@ class StereoService : Service() {
                 val rl = Math.sqrt(sl / frames).toFloat(); val rrms = Math.sqrt(sr / frames).toFloat()
                 val e = (rl + rrms) / 2f
                 eSm = if (e > eSm) e else eSm * 0.9f
-                if (e > 400f) {
+                if (e > 150f) {
                     val raw = (rrms - rl) / (rrms + rl + 1e-3f)
                     // deadzone: only a clearly one-sided mix moves the ball
-                    val m = Math.max(0f, Math.abs(raw) - 0.22f) / 0.5f
+                    val m = Math.max(0f, Math.abs(raw) - 0.10f) / 0.36f
                     val tgt = (if (raw < 0f) -m else m).coerceIn(-1f, 1f)
-                    smooth += (tgt - smooth) * 0.2f
+                    smooth += (tgt - smooth) * 0.25f
                     StereoState.pan = smooth
                 } else { smooth *= 0.9f; StereoState.pan = smooth }
                 StereoState.energy = eSm

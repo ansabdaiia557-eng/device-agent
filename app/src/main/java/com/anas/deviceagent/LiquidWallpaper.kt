@@ -552,7 +552,7 @@ class LiquidWallpaper : WallpaperService() {
                 // stereo pull with resistance: attraction point = pan, body trails on a soft spring and stretches under tension
                 val stLive = StereoState.live(now)
                 val sim = 0f
-                val targetPan = if (!playing) 0f else if (stLive) (StereoState.pan * 0.38f).coerceIn(-0.38f, 0.38f) else sim
+                val targetPan = if (!playing) 0f else if (stLive) (StereoState.pan * 0.45f).coerceIn(-0.45f, 0.45f) else sim
                 liqT += dt * (0.5f + 1.2f * rLoud)
                 var left = dt
                 while (left > 0f) {
