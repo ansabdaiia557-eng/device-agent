@@ -162,7 +162,7 @@ class LockActivity : Activity(), SensorEventListener {
         h.removeCallbacks(startRun)
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (!pm.isInteractive || !hasWindowFocus()) return
-        stage.postOnAnimation { h.postDelayed(startRun, 280) }
+        stage.postOnAnimation { h.postDelayed(startRun, 350) }
     }
 
     private fun setHidden() {
@@ -186,13 +186,13 @@ class LockActivity : Activity(), SensorEventListener {
         entOff = 36f * dp; clock.translationY = py + entOff
         dateV.translationY = 16f * dp; cards.translationY = H * 0.18f
         val ease = DecelerateInterpolator(2f)
-        photoV.animate().alpha(1f).setDuration(150).setInterpolator(ease).start()
-        figure.animate().alpha(1f).setDuration(150).setInterpolator(ease).start()
-        clock.animate().alpha(1f).setStartDelay(90).setDuration(300).setInterpolator(ease).start()
-        ValueAnimator.ofFloat(36f * dp, 0f).apply { startDelay = 90; duration = 300; interpolator = ease
+        photoV.animate().alpha(1f).setDuration(260).setInterpolator(ease).start()
+        figure.animate().alpha(1f).setDuration(260).setInterpolator(ease).start()
+        clock.animate().alpha(1f).setStartDelay(200).setDuration(480).setInterpolator(ease).start()
+        ValueAnimator.ofFloat(36f * dp, 0f).apply { startDelay = 200; duration = 480; interpolator = ease
             addUpdateListener { entOff = it.animatedValue as Float; clock.translationY = py + entOff }; start() }
-        dateV.animate().alpha(1f).translationY(0f).setStartDelay(200).setDuration(240).setInterpolator(ease).start()
-        cards.animate().alpha(1f).translationY(0f).setStartDelay(310).setDuration(420).setInterpolator(ease)
+        dateV.animate().alpha(1f).translationY(0f).setStartDelay(440).setDuration(380).setInterpolator(ease).start()
+        cards.animate().alpha(1f).translationY(0f).setStartDelay(680).setDuration(660).setInterpolator(ease)
             .withEndAction { layers(false) }.start()
     }
 
